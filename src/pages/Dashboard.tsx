@@ -27,25 +27,25 @@ export default function Dashboard() {
 
   const statCards = [
     {
-      title: "Total Patients",
+      title: "إجمالي المرضى",
       value: stats?.patientsCount?.toString() || "0",
       icon: Users,
       color: "text-blue-600",
     },
     {
-      title: "Appointments",
+      title: "المواعيد",
       value: stats?.appointmentsCount?.toString() || "0",
       icon: Calendar,
       color: "text-green-600",
     },
     {
-      title: "Treatments",
+      title: "العلاجات",
       value: stats?.treatmentsCount?.toString() || "0",
       icon: FileText,
       color: "text-purple-600",
     },
     {
-      title: "Revenue",
+      title: "الإيرادات",
       value: `$${stats?.totalRevenue?.toFixed(2) || "0.00"}`,
       icon: DollarSign,
       color: "text-emerald-600",
@@ -73,11 +73,11 @@ export default function Dashboard() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Welcome to Dental Clinic Management</CardTitle>
+          <CardTitle>مرحباً بك في نظام إدارة عيادة الأسنان</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">
-            Manage your dental clinic efficiently with patient records, appointments, treatments, and billing.
+            أدر عيادتك بكفاءة مع سجلات المرضى والمواعيد والعلاجات والفوترة.
           </p>
         </CardContent>
       </Card>

@@ -122,7 +122,7 @@ export default function PatientProfile() {
       queryClient.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
       setIsAppointmentDialogOpen(false);
       setNewAppointment({ doctor_id: "", scheduled_at: "", notes: "" });
-      toast({ title: "Success", description: "Appointment scheduled successfully" });
+      toast({ title: "نجح", description: "تم جدولة الموعد بنجاح" });
     },
   });
 
@@ -140,7 +140,7 @@ export default function PatientProfile() {
       queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
       setIsPaymentDialogOpen(false);
       setNewPayment({ amount: "" });
-      toast({ title: "Success", description: "Payment recorded successfully" });
+      toast({ title: "نجح", description: "تم تسجيل الدفعة بنجاح" });
     },
   });
 
@@ -154,14 +154,14 @@ export default function PatientProfile() {
     createPaymentMutation.mutate(newPayment);
   };
 
-  if (!patient) return <div>Loading patient...</div>;
+  if (!patient) return <div>جاري تحميل بيانات المريض...</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-4">
         <Button variant="outline" onClick={() => navigate("/patients")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Patients
+          <ArrowLeft className="ml-2 h-4 w-4" />
+          العودة للمرضى
         </Button>
         <h1 className="text-3xl font-bold">{patient.full_name}</h1>
       </div>
@@ -169,23 +169,23 @@ export default function PatientProfile() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Patient Information</CardTitle>
+            <CardTitle>معلومات المريض</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <div>
-              <strong>Date of Birth:</strong> {new Date(patient.date_of_birth).toLocaleDateString()}
+              <strong>تاريخ الميلاد:</strong> {new Date(patient.date_of_birth).toLocaleDateString()}
             </div>
             <div>
-              <strong>Phone:</strong> {patient.phone_number}
+              <strong>الهاتف:</strong> {patient.phone_number}
             </div>
             {patient.contact && (
               <div>
-                <strong>Contact:</strong> {patient.contact}
+                <strong>جهة الاتصال:</strong> {patient.contact}
               </div>
             )}
             {patient.medical_notes && (
               <div>
-                <strong>Medical Notes:</strong> {patient.medical_notes}
+                <strong>الملاحظات الطبية:</strong> {patient.medical_notes}
               </div>
             )}
           </CardContent>
@@ -193,38 +193,38 @@ export default function PatientProfile() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Balance</CardTitle>
+            <CardTitle>الرصيد</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               ${balance?.toFixed(2) || "0.00"}
             </div>
-            <p className="text-muted-foreground">Outstanding balance</p>
+            <p className="text-muted-foreground">الرصيد المستحق</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+            <CardTitle>إجراءات سريعة</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <Dialog open={isAppointmentDialogOpen} onOpenChange={setIsAppointmentDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="w-full">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Schedule Appointment
+                  <Calendar className="ml-2 h-4 w-4" />
+                  جدولة موعد
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Schedule New Appointment</DialogTitle>
+                  <DialogTitle>جدولة موعد جديد</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleScheduleAppointment} className="space-y-4">
                   <div>
-                    <Label htmlFor="doctor_id">Doctor</Label>
+                    <Label htmlFor="doctor_id">الطبيب</Label>
                     <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a doctor" />
+                        <SelectValue placeholder="اختر طبيب" />
                       </SelectTrigger>
                       <SelectContent>
                         {doctors?.map((doctor) => (
@@ -236,7 +236,7 @@ export default function PatientProfile() {
                     </Select>
                   </div>
                   <div>
-                    <Label htmlFor="scheduled_at">Date & Time</Label>
+                    <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
                     <Input
                       id="scheduled_at"
                       type="datetime-local"
@@ -246,7 +246,7 @@ export default function PatientProfile() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="notes">Notes</Label>
+                    <Label htmlFor="notes">ملاحظات</Label>
                     <Textarea
                       id="notes"
                       value={newAppointment.notes}
@@ -254,7 +254,7 @@ export default function PatientProfile() {
                     />
                   </div>
                   <Button type="submit" disabled={createAppointmentMutation.isPending}>
-                    {createAppointmentMutation.isPending ? "Scheduling..." : "Schedule"}
+                    {createAppointmentMutation.isPending ? "جاري الجدولة..." : "جدولة"}
                   </Button>
                 </form>
               </DialogContent>
@@ -265,18 +265,18 @@ export default function PatientProfile() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Appointments History</CardTitle>
+          <CardTitle>تاريخ المواعيد</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Doctor</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Treatments</TableHead>
-                <TableHead>Payments</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>التاريخ</TableHead>
+                <TableHead>الطبيب</TableHead>
+                <TableHead>الحالة</TableHead>
+                <TableHead>العلاجات</TableHead>
+                <TableHead>المدفوعات</TableHead>
+                <TableHead>الإجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -292,13 +292,14 @@ export default function PatientProfile() {
                       appointment.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
                       'bg-red-100 text-red-800'
                     }`}>
-                      {appointment.status}
+                      {appointment.status === 'Completed' ? 'مكتمل' :
+                       appointment.status === 'Scheduled' ? 'مجدول' : 'ملغي'}
                     </span>
                   </TableCell>
                   <TableCell>
                     {appointment.treatment_records?.map((record, index) => (
                       <div key={index} className="text-sm">
-                        {record.treatments?.name} - {record.sub_treatments?.name} (Tooth {record.tooth_number})
+                        {record.treatments?.name} - {record.sub_treatments?.name} (السن {record.tooth_number})
                       </div>
                     ))}
                   </TableCell>
@@ -318,8 +319,8 @@ export default function PatientProfile() {
                         setIsPaymentDialogOpen(true);
                       }}
                     >
-                      <CreditCard className="h-4 w-4 mr-1" />
-                      Add Payment
+                      <CreditCard className="h-4 w-4 ml-1" />
+                      إضافة دفعة
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -332,11 +333,11 @@ export default function PatientProfile() {
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Record Payment</DialogTitle>
+            <DialogTitle>تسجيل دفعة</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleRecordPayment} className="space-y-4">
             <div>
-              <Label htmlFor="amount">Payment Amount</Label>
+              <Label htmlFor="amount">مبلغ الدفعة</Label>
               <Input
                 id="amount"
                 type="number"
@@ -347,7 +348,7 @@ export default function PatientProfile() {
               />
             </div>
             <Button type="submit" disabled={createPaymentMutation.isPending}>
-              {createPaymentMutation.isPending ? "Recording..." : "Record Payment"}
+              {createPaymentMutation.isPending ? "جاري التسجيل..." : "تسجيل الدفعة"}
             </Button>
           </form>
         </DialogContent>

@@ -149,24 +149,24 @@ export default function Appointments() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Appointments</h1>
+        <h1 className="text-3xl font-bold">المواعيد</h1>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              New Appointment
+              <Plus className="ml-2 h-4 w-4" />
+              موعد جديد
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New Appointment</DialogTitle>
+              <DialogTitle>إنشاء موعد جديد</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="patient_id">Patient</Label>
+                <Label htmlFor="patient_id">المريض</Label>
                 <Select value={newAppointment.patient_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, patient_id: value })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a patient" />
+                    <SelectValue placeholder="اختر مريض" />
                   </SelectTrigger>
                   <SelectContent>
                     {patients?.map((patient) => (
@@ -178,10 +178,10 @@ export default function Appointments() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="doctor_id">Doctor</Label>
+                <Label htmlFor="doctor_id">الطبيب</Label>
                 <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a doctor" />
+                    <SelectValue placeholder="اختر طبيب" />
                   </SelectTrigger>
                   <SelectContent>
                     {doctors?.map((doctor) => (
@@ -193,7 +193,7 @@ export default function Appointments() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="scheduled_at">Date & Time</Label>
+                <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
                 <Input
                   id="scheduled_at"
                   type="datetime-local"
@@ -203,7 +203,7 @@ export default function Appointments() {
                 />
               </div>
               <div>
-                <Label htmlFor="notes">Notes</Label>
+                <Label htmlFor="notes">ملاحظات</Label>
                 <Textarea
                   id="notes"
                   value={newAppointment.notes}
@@ -211,7 +211,7 @@ export default function Appointments() {
                 />
               </div>
               <Button type="submit" disabled={createAppointmentMutation.isPending}>
-                {createAppointmentMutation.isPending ? "Creating..." : "Create Appointment"}
+                {createAppointmentMutation.isPending ? "جاري الإنشاء..." : "إنشاء موعد"}
               </Button>
             </form>
           </DialogContent>
@@ -220,21 +220,21 @@ export default function Appointments() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Appointments List</CardTitle>
+          <CardTitle>قائمة المواعيد</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div>Loading appointments...</div>
+            <div>جاري تحميل المواعيد...</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date & Time</TableHead>
-                  <TableHead>Patient</TableHead>
-                  <TableHead>Doctor</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>التاريخ والوقت</TableHead>
+                  <TableHead>المريض</TableHead>
+                  <TableHead>الطبيب</TableHead>
+                  <TableHead>الحالة</TableHead>
+                  <TableHead>ملاحظات</TableHead>
+                  <TableHead>الإجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -257,7 +257,8 @@ export default function Appointments() {
                         appointment.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
                         'bg-red-100 text-red-800'
                       }`}>
-                        {appointment.status}
+                        {appointment.status === 'Completed' ? 'مكتمل' :
+                         appointment.status === 'Scheduled' ? 'مجدول' : 'ملغي'}
                       </span>
                     </TableCell>
                     <TableCell>{appointment.notes || "-"}</TableCell>
@@ -273,15 +274,15 @@ export default function Appointments() {
                                 setIsRecordDialogOpen(true);
                               }}
                             >
-                              <FileText className="h-4 w-4 mr-1" />
-                              Record Treatment
+                              <FileText className="h-4 w-4 ml-1" />
+                              تسجيل علاج
                             </Button>
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => updateAppointmentStatus(appointment.id, 'Completed')}
                             >
-                              Mark Complete
+                              تمييز كمكتمل
                             </Button>
                           </>
                         )}
@@ -290,7 +291,7 @@ export default function Appointments() {
                           size="sm"
                           onClick={() => navigate(`/patient-profile/${appointment.patient_id}`)}
                         >
-                          View Patient
+                          عرض المريض
                         </Button>
                       </div>
                     </TableCell>
@@ -305,17 +306,17 @@ export default function Appointments() {
       <Dialog open={isRecordDialogOpen} onOpenChange={setIsRecordDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Record Treatment</DialogTitle>
+            <DialogTitle>تسجيل علاج</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleRecordTreatment} className="space-y-4">
             <div>
-              <Label htmlFor="treatment_id">Treatment</Label>
+              <Label htmlFor="treatment_id">العلاج</Label>
               <Select 
                 value={treatmentRecord.treatment_id} 
                 onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, treatment_id: value, sub_treatment_id: "" })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a treatment" />
+                  <SelectValue placeholder="اختر علاج" />
                 </SelectTrigger>
                 <SelectContent>
                   {treatments?.map((treatment) => (

@@ -68,14 +68,14 @@ export default function Patients() {
         medical_notes: "",
       });
       toast({
-        title: "Success",
-        description: "Patient added successfully",
+        title: "نجح",
+        description: "تم إضافة المريض بنجاح",
       });
     },
     onError: (error) => {
       toast({
-        title: "Error",
-        description: "Failed to add patient",
+        title: "خطأ",
+        description: "فشل في إضافة المريض",
         variant: "destructive",
       });
     },
@@ -93,21 +93,21 @@ export default function Patients() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Patients</h1>
+        <h1 className="text-3xl font-bold">المرضى</h1>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Patient
+              <Plus className="ml-2 h-4 w-4" />
+              إضافة مريض
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Add New Patient</DialogTitle>
+              <DialogTitle>إضافة مريض جديد</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="full_name">Full Name</Label>
+                <Label htmlFor="full_name">الاسم الكامل</Label>
                 <Input
                   id="full_name"
                   value={newPatient.full_name}
@@ -116,7 +116,7 @@ export default function Patients() {
                 />
               </div>
               <div>
-                <Label htmlFor="date_of_birth">Date of Birth</Label>
+                <Label htmlFor="date_of_birth">تاريخ الميلاد</Label>
                 <Input
                   id="date_of_birth"
                   type="date"
@@ -126,7 +126,7 @@ export default function Patients() {
                 />
               </div>
               <div>
-                <Label htmlFor="phone_number">Phone Number</Label>
+                <Label htmlFor="phone_number">رقم الهاتف</Label>
                 <Input
                   id="phone_number"
                   value={newPatient.phone_number}
@@ -135,7 +135,7 @@ export default function Patients() {
                 />
               </div>
               <div>
-                <Label htmlFor="contact">Additional Contact</Label>
+                <Label htmlFor="contact">جهة اتصال إضافية</Label>
                 <Input
                   id="contact"
                   value={newPatient.contact}
@@ -143,7 +143,7 @@ export default function Patients() {
                 />
               </div>
               <div>
-                <Label htmlFor="medical_notes">Medical Notes</Label>
+                <Label htmlFor="medical_notes">الملاحظات الطبية</Label>
                 <Textarea
                   id="medical_notes"
                   value={newPatient.medical_notes}
@@ -151,7 +151,7 @@ export default function Patients() {
                 />
               </div>
               <Button type="submit" disabled={createPatientMutation.isPending}>
-                {createPatientMutation.isPending ? "Adding..." : "Add Patient"}
+                {createPatientMutation.isPending ? "جاري الإضافة..." : "إضافة مريض"}
               </Button>
             </form>
           </DialogContent>
@@ -160,16 +160,16 @@ export default function Patients() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Search Patients</CardTitle>
+          <CardTitle>البحث عن المرضى</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search patients by name..."
+              placeholder="البحث عن المرضى بالاسم..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pr-10"
             />
           </div>
         </CardContent>
@@ -177,20 +177,20 @@ export default function Patients() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Patients List</CardTitle>
+          <CardTitle>قائمة المرضى</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div>Loading patients...</div>
+            <div>جاري تحميل المرضى...</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Date of Birth</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>الاسم</TableHead>
+                  <TableHead>تاريخ الميلاد</TableHead>
+                  <TableHead>الهاتف</TableHead>
+                  <TableHead>جهة الاتصال</TableHead>
+                  <TableHead>الإجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -207,8 +207,8 @@ export default function Patients() {
                           size="sm"
                           onClick={() => viewPatientProfile(patient.id)}
                         >
-                          <FileText className="h-4 w-4 mr-1" />
-                          Profile
+                          <FileText className="h-4 w-4 ml-1" />
+                          الملف الشخصي
                         </Button>
                       </div>
                     </TableCell>

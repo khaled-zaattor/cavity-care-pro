@@ -113,21 +113,21 @@ export default function Treatments() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Treatments</h1>
+        <h1 className="text-3xl font-bold">العلاجات</h1>
         <Dialog open={isTreatmentDialogOpen} onOpenChange={setIsTreatmentDialogOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Treatment
+              <Plus className="ml-2 h-4 w-4" />
+              إضافة علاج
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add New Treatment</DialogTitle>
+              <DialogTitle>إضافة علاج جديد</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmitTreatment} className="space-y-4">
               <div>
-                <Label htmlFor="name">Treatment Name</Label>
+                <Label htmlFor="name">اسم العلاج</Label>
                 <Input
                   id="name"
                   value={newTreatment.name}
@@ -136,7 +136,7 @@ export default function Treatments() {
                 />
               </div>
               <div>
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">الوصف</Label>
                 <Textarea
                   id="description"
                   value={newTreatment.description}
@@ -144,7 +144,7 @@ export default function Treatments() {
                 />
               </div>
               <div>
-                <Label htmlFor="estimated_cost">Estimated Cost ($)</Label>
+                <Label htmlFor="estimated_cost">التكلفة المقدرة ($)</Label>
                 <Input
                   id="estimated_cost"
                   type="number"
@@ -155,7 +155,7 @@ export default function Treatments() {
                 />
               </div>
               <Button type="submit" disabled={createTreatmentMutation.isPending}>
-                {createTreatmentMutation.isPending ? "Adding..." : "Add Treatment"}
+                {createTreatmentMutation.isPending ? "جاري الإضافة..." : "إضافة علاج"}
               </Button>
             </form>
           </DialogContent>
@@ -164,11 +164,11 @@ export default function Treatments() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Treatments & Sub-Treatments</CardTitle>
+          <CardTitle>العلاجات والعلاجات الفرعية</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div>Loading treatments...</div>
+            <div>جاري تحميل العلاجات...</div>
           ) : (
             <div className="space-y-6">
               {treatments?.map((treatment) => (
