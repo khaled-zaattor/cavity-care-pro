@@ -21,7 +21,6 @@ export default function Appointments() {
   // Filter states
   const [filterDoctor, setFilterDoctor] = useState("");
   const [filterDate, setFilterDate] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
 
   const [newAppointment, setNewAppointment] = useState({
     patient_id: "",
@@ -175,111 +174,40 @@ export default function Appointments() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">المواعيد</h1>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter className="ml-2 h-4 w-4" />
-            الفلاتر
-          </Button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="ml-2 h-4 w-4" />
-                موعد جديد
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>إنشاء موعد جديد</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="patient_id">المريض</Label>
-                  <Select value={newAppointment.patient_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, patient_id: value })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="اختر مريض" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {patients?.map((patient) => (
-                        <SelectItem key={patient.id} value={patient.id}>
-                          {patient.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="doctor_id">الطبيب</Label>
-                  <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="اختر طبيب" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {doctors?.map((doctor) => (
-                        <SelectItem key={doctor.id} value={doctor.id}>
-                          {doctor.full_name} - {doctor.specialty}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
-                  <Input
-                    id="scheduled_at"
-                    type="datetime-local"
-                    value={newAppointment.scheduled_at}
-                    onChange={(e) => setNewAppointment({ ...newAppointment, scheduled_at: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="notes">ملاحظات</Label>
-                  <Textarea
-                    id="notes"
-                    value={newAppointment.notes}
-                    onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
-                  />
-                </div>
-                <Button type="submit" disabled={createAppointmentMutation.isPending}>
-                  {createAppointmentMutation.isPending ? "جاري الإنشاء..." : "إنشاء موعد"}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      {showFilters && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              الفلاتر
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => {
-                  setFilterDoctor("");
-                  setFilterDate("");
-                }}
-              >
-                <X className="h-4 w-4 ml-1" />
-                مسح الفلاتر
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="ml-2 h-4 w-4" />
+              موعد جديد
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>إنشاء موعد جديد</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="filter-doctor">فلترة حسب الطبيب</Label>
-                <Select value={filterDoctor} onValueChange={setFilterDoctor}>
+                <Label htmlFor="patient_id">المريض</Label>
+                <Select value={newAppointment.patient_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, patient_id: value })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="جميع الأطباء" />
+                    <SelectValue placeholder="اختر مريض" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">جميع الأطباء</SelectItem>
+                    {patients?.map((patient) => (
+                      <SelectItem key={patient.id} value={patient.id}>
+                        {patient.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="doctor_id">الطبيب</Label>
+                <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر طبيب" />
+                  </SelectTrigger>
+                  <SelectContent>
                     {doctors?.map((doctor) => (
                       <SelectItem key={doctor.id} value={doctor.id}>
                         {doctor.full_name} - {doctor.specialty}
@@ -289,19 +217,30 @@ export default function Appointments() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="filter-date">فلترة حسب التاريخ</Label>
+                <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
                 <Input
-                  id="filter-date"
-                  type="date"
-                  value={filterDate}
-                  onChange={(e) => setFilterDate(e.target.value)}
-                  placeholder="اختر تاريخ"
+                  id="scheduled_at"
+                  type="datetime-local"
+                  value={newAppointment.scheduled_at}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, scheduled_at: e.target.value })}
+                  required
                 />
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              <div>
+                <Label htmlFor="notes">ملاحظات</Label>
+                <Textarea
+                  id="notes"
+                  value={newAppointment.notes}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
+                />
+              </div>
+              <Button type="submit" disabled={createAppointmentMutation.isPending}>
+                {createAppointmentMutation.isPending ? "جاري الإنشاء..." : "إنشاء موعد"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
 
       <Card>
         <CardHeader>
@@ -314,9 +253,37 @@ export default function Appointments() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>التاريخ والوقت</TableHead>
+                  <TableHead>
+                    <div className="space-y-2">
+                      <span>التاريخ والوقت</span>
+                      <Input
+                        type="date"
+                        value={filterDate}
+                        onChange={(e) => setFilterDate(e.target.value)}
+                        placeholder="فلترة بالتاريخ"
+                        className="text-xs"
+                      />
+                    </div>
+                  </TableHead>
                   <TableHead>المريض</TableHead>
-                  <TableHead>الطبيب</TableHead>
+                  <TableHead>
+                    <div className="space-y-2">
+                      <span>الطبيب</span>
+                      <Select value={filterDoctor} onValueChange={setFilterDoctor}>
+                        <SelectTrigger className="text-xs">
+                          <SelectValue placeholder="جميع الأطباء" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">جميع الأطباء</SelectItem>
+                          {doctors?.map((doctor) => (
+                            <SelectItem key={doctor.id} value={doctor.id}>
+                              {doctor.full_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </TableHead>
                   <TableHead>الحالة</TableHead>
                   <TableHead>ملاحظات</TableHead>
                   <TableHead>الإجراءات</TableHead>
