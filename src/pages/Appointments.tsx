@@ -28,6 +28,7 @@ export default function Appointments() {
     treatment_id: "",
     sub_treatment_id: "",
     tooth_number: "",
+    actual_cost: "",
   });
 
   const { toast } = useToast();
@@ -117,7 +118,7 @@ export default function Appointments() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       setIsRecordDialogOpen(false);
-      setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_number: "" });
+      setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_number: "", actual_cost: "" });
       toast({ title: "Success", description: "Treatment recorded successfully" });
     },
   });
@@ -326,15 +327,21 @@ export default function Appointments() {
                   ))}
                 </SelectContent>
               </Select>
+              {treatmentRecord.treatment_id && (
+                <div className="mt-2 p-2 bg-blue-50 rounded text-sm">
+                  <span className="font-medium">التكلفة المقدرة: </span>
+                  ${treatments?.find(t => t.id === treatmentRecord.treatment_id)?.estimated_cost}
+                </div>
+              )}
             </div>
             <div>
-              <Label htmlFor="sub_treatment_id">Sub-Treatment</Label>
+              <Label htmlFor="sub_treatment_id">العلاج الفرعي</Label>
               <Select 
                 value={treatmentRecord.sub_treatment_id} 
                 onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, sub_treatment_id: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a sub-treatment" />
+                  <SelectValue placeholder="اختر علاج فرعي" />
                 </SelectTrigger>
                 <SelectContent>
                   {subTreatments?.map((subTreatment) => (
@@ -346,17 +353,29 @@ export default function Appointments() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="tooth_number">Tooth Number</Label>
+              <Label htmlFor="tooth_number">رقم السن</Label>
               <Input
                 id="tooth_number"
                 value={treatmentRecord.tooth_number}
                 onChange={(e) => setTreatmentRecord({ ...treatmentRecord, tooth_number: e.target.value })}
-                placeholder="e.g., 14, 23, etc."
+                placeholder="مثال: 14، 23، إلخ"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
+              <Input
+                id="actual_cost"
+                type="number"
+                step="0.01"
+                value={treatmentRecord.actual_cost}
+                onChange={(e) => setTreatmentRecord({ ...treatmentRecord, actual_cost: e.target.value })}
+                placeholder="أدخل التكلفة الحقيقية"
                 required
               />
             </div>
             <Button type="submit" disabled={recordTreatmentMutation.isPending}>
-              {recordTreatmentMutation.isPending ? "Recording..." : "Record Treatment"}
+              {recordTreatmentMutation.isPending ? "جاري التسجيل..." : "تسجيل العلاج"}
             </Button>
           </form>
         </DialogContent>
