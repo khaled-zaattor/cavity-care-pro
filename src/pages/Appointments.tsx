@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, FileText } from "lucide-react";
+import { Plus, FileText, Filter, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +17,12 @@ export default function Appointments() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  
+  // Filter states
+  const [filterDoctor, setFilterDoctor] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+
   const [newAppointment, setNewAppointment] = useState({
     patient_id: "",
     doctor_id: "",
@@ -36,16 +42,34 @@ export default function Appointments() {
   const navigate = useNavigate();
 
   const { data: appointments, isLoading } = useQuery({
-    queryKey: ["appointments"],
+    queryKey: ["appointments", filterDoctor, filterDate],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("appointments")
         .select(`
           *,
           patients (full_name),
           doctors (full_name, specialty)
-        `)
-        .order("scheduled_at", { ascending: false });
+        `);
+
+      // Apply doctor filter
+      if (filterDoctor) {
+        query = query.eq("doctor_id", filterDoctor);
+      }
+
+      // Apply date filter
+      if (filterDate) {
+        const startOfDay = new Date(filterDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(filterDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        query = query
+          .gte("scheduled_at", startOfDay.toISOString())
+          .lte("scheduled_at", endOfDay.toISOString());
+      }
+
+      const { data, error } = await query.order("scheduled_at", { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -151,40 +175,111 @@ export default function Appointments() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">المواعيد</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="ml-2 h-4 w-4" />
-              موعد جديد
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>إنشاء موعد جديد</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="ml-2 h-4 w-4" />
+            الفلاتر
+          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="ml-2 h-4 w-4" />
+                موعد جديد
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>إنشاء موعد جديد</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <Label htmlFor="patient_id">المريض</Label>
+                  <Select value={newAppointment.patient_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, patient_id: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر مريض" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {patients?.map((patient) => (
+                        <SelectItem key={patient.id} value={patient.id}>
+                          {patient.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="doctor_id">الطبيب</Label>
+                  <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر طبيب" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {doctors?.map((doctor) => (
+                        <SelectItem key={doctor.id} value={doctor.id}>
+                          {doctor.full_name} - {doctor.specialty}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
+                  <Input
+                    id="scheduled_at"
+                    type="datetime-local"
+                    value={newAppointment.scheduled_at}
+                    onChange={(e) => setNewAppointment({ ...newAppointment, scheduled_at: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="notes">ملاحظات</Label>
+                  <Textarea
+                    id="notes"
+                    value={newAppointment.notes}
+                    onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
+                  />
+                </div>
+                <Button type="submit" disabled={createAppointmentMutation.isPending}>
+                  {createAppointmentMutation.isPending ? "جاري الإنشاء..." : "إنشاء موعد"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {showFilters && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              الفلاتر
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => {
+                  setFilterDoctor("");
+                  setFilterDate("");
+                }}
+              >
+                <X className="h-4 w-4 ml-1" />
+                مسح الفلاتر
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="patient_id">المريض</Label>
-                <Select value={newAppointment.patient_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, patient_id: value })}>
+                <Label htmlFor="filter-doctor">فلترة حسب الطبيب</Label>
+                <Select value={filterDoctor} onValueChange={setFilterDoctor}>
                   <SelectTrigger>
-                    <SelectValue placeholder="اختر مريض" />
+                    <SelectValue placeholder="جميع الأطباء" />
                   </SelectTrigger>
                   <SelectContent>
-                    {patients?.map((patient) => (
-                      <SelectItem key={patient.id} value={patient.id}>
-                        {patient.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="doctor_id">الطبيب</Label>
-                <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر طبيب" />
-                  </SelectTrigger>
-                  <SelectContent>
+                    <SelectItem value="">جميع الأطباء</SelectItem>
                     {doctors?.map((doctor) => (
                       <SelectItem key={doctor.id} value={doctor.id}>
                         {doctor.full_name} - {doctor.specialty}
@@ -194,30 +289,19 @@ export default function Appointments() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
+                <Label htmlFor="filter-date">فلترة حسب التاريخ</Label>
                 <Input
-                  id="scheduled_at"
-                  type="datetime-local"
-                  value={newAppointment.scheduled_at}
-                  onChange={(e) => setNewAppointment({ ...newAppointment, scheduled_at: e.target.value })}
-                  required
+                  id="filter-date"
+                  type="date"
+                  value={filterDate}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                  placeholder="اختر تاريخ"
                 />
               </div>
-              <div>
-                <Label htmlFor="notes">ملاحظات</Label>
-                <Textarea
-                  id="notes"
-                  value={newAppointment.notes}
-                  onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
-                />
-              </div>
-              <Button type="submit" disabled={createAppointmentMutation.isPending}>
-                {createAppointmentMutation.isPending ? "جاري الإنشاء..." : "إنشاء موعد"}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
