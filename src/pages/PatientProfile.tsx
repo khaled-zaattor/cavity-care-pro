@@ -87,7 +87,7 @@ export default function PatientProfile() {
       const { data: treatmentRecords, error: trError } = await supabase
         .from("treatment_records")
         .select(`
-          treatments (estimated_cost),
+          *,
           appointments!inner (patient_id)
         `)
         .eq("appointments.patient_id", patientId);
@@ -102,7 +102,7 @@ export default function PatientProfile() {
 
       if (trError || pError) throw trError || pError;
 
-      const totalCost = treatmentRecords?.reduce((sum, record) => sum + Number(record.treatments?.estimated_cost || 0), 0) || 0;
+      const totalCost = treatmentRecords?.reduce((sum, record) => sum + Number((record as any).actual_cost || 0), 0) || 0;
       const totalPaid = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
 
       return totalCost - totalPaid;
