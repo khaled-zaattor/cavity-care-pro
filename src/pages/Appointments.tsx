@@ -52,7 +52,7 @@ export default function Appointments() {
         `);
 
       // Apply doctor filter
-      if (filterDoctor) {
+      if (filterDoctor && filterDoctor !== "all") {
         query = query.eq("doctor_id", filterDoctor);
       }
 
@@ -274,7 +274,7 @@ export default function Appointments() {
                           <SelectValue placeholder="جميع الأطباء" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">جميع الأطباء</SelectItem>
+                          <SelectItem value="all">جميع الأطباء</SelectItem>
                           {doctors?.map((doctor) => (
                             <SelectItem key={doctor.id} value={doctor.id}>
                               {doctor.full_name}
