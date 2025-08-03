@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, FileText, Filter, X } from "lucide-react";
+import { Plus, FileText, Filter, X, MessageCircle } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -47,7 +47,7 @@ export default function Appointments() {
         .from("appointments")
         .select(`
           *,
-          patients (full_name),
+          patients (full_name, phone_number),
           doctors (full_name, specialty)
         `);
 
@@ -168,6 +168,43 @@ export default function Appointments() {
   const handleRecordTreatment = (e: React.FormEvent) => {
     e.preventDefault();
     recordTreatmentMutation.mutate(treatmentRecord);
+  };
+
+  const sendWhatsAppMessage = (appointment: any) => {
+    if (!appointment.patients?.phone_number) {
+      toast({ 
+        title: "خطأ", 
+        description: "رقم هاتف المريض غير متوفر", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    const appointmentDate = new Date(appointment.scheduled_at);
+    const formattedDate = appointmentDate.toLocaleDateString('ar-SA');
+    const formattedTime = appointmentDate.toLocaleTimeString('ar-SA', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+
+    const message = `مرحباً ${appointment.patients.full_name}،
+
+نذكركم بموعدكم في العيادة:
+📅 التاريخ: ${formattedDate}
+🕐 الوقت: ${formattedTime}
+👨‍⚕️ الطبيب: ${appointment.doctors?.full_name}
+🏥 التخصص: ${appointment.doctors?.specialty}
+
+${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
+
+يرجى الحضور قبل الموعد بـ 15 دقيقة.
+
+شكراً لكم`;
+
+    const phoneNumber = appointment.patients.phone_number.replace(/[^0-9]/g, '');
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+    
+    window.open(whatsappUrl, '_blank');
   };
 
   return (
@@ -338,6 +375,15 @@ export default function Appointments() {
                             </Button>
                           </>
                         )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => sendWhatsAppMessage(appointment)}
+                          className="text-green-600 hover:text-green-700"
+                        >
+                          <MessageCircle className="h-4 w-4 ml-1" />
+                          واتساب
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
