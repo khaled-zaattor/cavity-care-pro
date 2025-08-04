@@ -133,7 +133,11 @@ export default function Appointments() {
     mutationFn: async (record: typeof treatmentRecord) => {
       const { data, error } = await supabase
         .from("treatment_records")
-        .insert([{ ...record, appointment_id: selectedAppointment.id }])
+        .insert([{ 
+          ...record, 
+          appointment_id: selectedAppointment.id,
+          actual_cost: record.actual_cost ? parseFloat(record.actual_cost) : null
+        }])
         .select();
       if (error) throw error;
       return data;
