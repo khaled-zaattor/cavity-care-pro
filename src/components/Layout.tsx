@@ -22,16 +22,16 @@ export const Layout = ({ children }: LayoutProps) => {
   const currentPage = navItems.find(item => item.path === location.pathname)?.label || "لوحة التحكم";
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={true}>
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         
         {/* Main Content */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Mobile Header */}
-          <header className="bg-card border-b p-4 flex items-center justify-between lg:justify-start">
+          <header className="bg-card border-b p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <SidebarTrigger className="lg:hidden" />
+              <SidebarTrigger />
               <h2 className="text-lg lg:text-xl font-semibold truncate">
                 {currentPage}
               </h2>

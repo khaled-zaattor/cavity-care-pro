@@ -33,10 +33,14 @@ export function AppSidebar() {
     active ? "bg-primary text-primary-foreground font-medium" : "hover:bg-accent hover:text-accent-foreground";
 
   return (
-    <Sidebar className={isCollapsed ? "w-14" : "w-64"} collapsible="icon">
+    <Sidebar 
+      variant="sidebar" 
+      side="right"
+      className="border-l"
+    >
       <SidebarContent>
         <div className="p-4 border-b">
-          <h1 className={`font-bold text-primary transition-all ${isCollapsed ? "text-lg text-center" : "text-xl"}`}>
+          <h1 className={`font-bold text-primary transition-all ${isCollapsed ? "text-sm text-center" : "text-xl"}`}>
             {isCollapsed ? "ع.أ" : "عيادة الأسنان"}
           </h1>
         </div>
