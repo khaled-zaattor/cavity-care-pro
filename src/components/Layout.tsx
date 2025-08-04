@@ -1,14 +1,15 @@
 import { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Users, Calendar, FileText, Stethoscope } from "lucide-react";
+import { Users, Calendar, FileText, Stethoscope, Menu } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
 
 interface LayoutProps {
   children: ReactNode;
 }
 
 export const Layout = ({ children }: LayoutProps) => {
-  const navigate = useNavigate();
   const location = useLocation();
 
   const navItems = [
@@ -18,43 +19,31 @@ export const Layout = ({ children }: LayoutProps) => {
     { path: "/treatments", label: "العلاجات", icon: FileText },
   ];
 
-  return (
-    <div className="min-h-screen bg-background flex">
-      {/* Sidebar */}
-      <div className="w-64 bg-card border-r">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-primary">عيادة الأسنان</h1>
-        </div>
-        <nav className="px-4 space-y-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.path;
-            return (
-              <Button
-                key={item.path}
-                variant={isActive ? "default" : "ghost"}
-                className="w-full justify-start"
-                onClick={() => navigate(item.path)}
-              >
-                <Icon className="ml-2 h-4 w-4" />
-                {item.label}
-              </Button>
-            );
-          })}
-        </nav>
-      </div>
+  const currentPage = navItems.find(item => item.path === location.pathname)?.label || "لوحة التحكم";
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        <header className="bg-card border-b p-4">
-          <h2 className="text-xl font-semibold">
-            {navItems.find(item => item.path === location.pathname)?.label || "لوحة التحكم"}
-          </h2>
-        </header>
-        <main className="flex-1 p-6 overflow-auto">
-          {children}
-        </main>
+  return (
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full bg-background">
+        <AppSidebar />
+        
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Mobile Header */}
+          <header className="bg-card border-b p-4 flex items-center justify-between lg:justify-start">
+            <div className="flex items-center gap-3">
+              <SidebarTrigger className="lg:hidden" />
+              <h2 className="text-lg lg:text-xl font-semibold truncate">
+                {currentPage}
+              </h2>
+            </div>
+          </header>
+          
+          {/* Main Content Area */}
+          <main className="flex-1 p-3 lg:p-6 overflow-auto">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 };

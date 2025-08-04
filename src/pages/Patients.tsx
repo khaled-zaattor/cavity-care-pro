@@ -147,12 +147,12 @@ export default function Patients() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">المرضى</h1>
+    <div className="space-y-4 lg:space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl lg:text-3xl font-bold">المرضى</h1>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="ml-2 h-4 w-4" />
               إضافة مريض
             </Button>
@@ -253,53 +253,116 @@ export default function Patients() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div>جاري تحميل المرضى...</div>
+            <div className="text-center py-8">جاري تحميل المرضى...</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>الاسم</TableHead>
-                  <TableHead>تاريخ الميلاد</TableHead>
-                  <TableHead>الهاتف</TableHead>
-                  <TableHead>العنوان</TableHead>
-                  <TableHead>المهنة</TableHead>
-                  <TableHead>جهة الاتصال</TableHead>
-                  <TableHead>الإجراءات</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>الاسم</TableHead>
+                      <TableHead>تاريخ الميلاد</TableHead>
+                      <TableHead>الهاتف</TableHead>
+                      <TableHead>العنوان</TableHead>
+                      <TableHead>المهنة</TableHead>
+                      <TableHead>جهة الاتصال</TableHead>
+                      <TableHead>الإجراءات</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {patients?.map((patient) => (
+                      <TableRow key={patient.id}>
+                        <TableCell className="font-medium">{patient.full_name}</TableCell>
+                        <TableCell>{new Date(patient.date_of_birth).toLocaleDateString()}</TableCell>
+                        <TableCell>{patient.phone_number}</TableCell>
+                        <TableCell>{patient.address || "-"}</TableCell>
+                        <TableCell>{patient.job || "-"}</TableCell>
+                        <TableCell>{patient.contact || "-"}</TableCell>
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditDialog(patient)}
+                            >
+                              <Edit className="h-4 w-4 ml-1" />
+                              تعديل
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => viewPatientProfile(patient.id)}
+                            >
+                              <FileText className="h-4 w-4 ml-1" />
+                              الملف الشخصي
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-4">
                 {patients?.map((patient) => (
-                  <TableRow key={patient.id}>
-                    <TableCell className="font-medium">{patient.full_name}</TableCell>
-                    <TableCell>{new Date(patient.date_of_birth).toLocaleDateString()}</TableCell>
-                    <TableCell>{patient.phone_number}</TableCell>
-                    <TableCell>{patient.address || "-"}</TableCell>
-                    <TableCell>{patient.job || "-"}</TableCell>
-                    <TableCell>{patient.contact || "-"}</TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openEditDialog(patient)}
-                        >
-                          <Edit className="h-4 w-4 ml-1" />
-                          تعديل
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => viewPatientProfile(patient.id)}
-                        >
-                          <FileText className="h-4 w-4 ml-1" />
-                          الملف الشخصي
-                        </Button>
+                  <Card key={patient.id} className="p-4">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <h3 className="font-semibold text-lg">{patient.full_name}</h3>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openEditDialog(patient)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => viewPatientProfile(patient.id)}
+                          >
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                      
+                      <div className="grid grid-cols-1 gap-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">تاريخ الميلاد:</span>
+                          <span>{new Date(patient.date_of_birth).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">الهاتف:</span>
+                          <span>{patient.phone_number}</span>
+                        </div>
+                        {patient.address && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">العنوان:</span>
+                            <span className="text-right">{patient.address}</span>
+                          </div>
+                        )}
+                        {patient.job && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">المهنة:</span>
+                            <span>{patient.job}</span>
+                          </div>
+                        )}
+                        {patient.contact && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">جهة الاتصال:</span>
+                            <span className="text-right">{patient.contact}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
