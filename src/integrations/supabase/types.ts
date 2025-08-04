@@ -94,31 +94,37 @@ export type Database = {
       }
       patients: {
         Row: {
+          address: string | null
           contact: string | null
           created_at: string
           date_of_birth: string
           full_name: string
           id: string
+          job: string | null
           medical_notes: string | null
           phone_number: string
           updated_at: string
         }
         Insert: {
+          address?: string | null
           contact?: string | null
           created_at?: string
           date_of_birth: string
           full_name: string
           id?: string
+          job?: string | null
           medical_notes?: string | null
           phone_number: string
           updated_at?: string
         }
         Update: {
+          address?: string | null
           contact?: string | null
           created_at?: string
           date_of_birth?: string
           full_name?: string
           id?: string
+          job?: string | null
           medical_notes?: string | null
           phone_number?: string
           updated_at?: string
@@ -194,6 +200,7 @@ export type Database = {
       }
       treatment_records: {
         Row: {
+          actual_cost: number | null
           appointment_id: string
           created_at: string
           id: string
@@ -204,6 +211,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          actual_cost?: number | null
           appointment_id: string
           created_at?: string
           id?: string
@@ -214,6 +222,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          actual_cost?: number | null
           appointment_id?: string
           created_at?: string
           id?: string

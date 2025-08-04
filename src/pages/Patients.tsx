@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Calendar, FileText } from "lucide-react";
+import { Search, Plus, Calendar, FileText, Edit } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -19,17 +19,23 @@ interface Patient {
   phone_number: string;
   contact: string | null;
   medical_notes: string | null;
+  address: string | null;
+  job: string | null;
 }
 
 export default function Patients() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [newPatient, setNewPatient] = useState({
     full_name: "",
     date_of_birth: "",
     phone_number: "",
     contact: "",
     medical_notes: "",
+    address: "",
+    job: "",
   });
 
   const { toast } = useToast();
@@ -66,6 +72,8 @@ export default function Patients() {
         phone_number: "",
         contact: "",
         medical_notes: "",
+        address: "",
+        job: "",
       });
       toast({
         title: "نجح",
@@ -81,9 +89,57 @@ export default function Patients() {
     },
   });
 
+  const updatePatientMutation = useMutation({
+    mutationFn: async (patient: Patient) => {
+      const { data, error } = await supabase
+        .from("patients")
+        .update({
+          full_name: patient.full_name,
+          date_of_birth: patient.date_of_birth,
+          phone_number: patient.phone_number,
+          contact: patient.contact,
+          medical_notes: patient.medical_notes,
+          address: patient.address,
+          job: patient.job,
+        })
+        .eq("id", patient.id)
+        .select();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patients"] });
+      setIsEditDialogOpen(false);
+      setEditingPatient(null);
+      toast({
+        title: "نجح",
+        description: "تم تحديث بيانات المريض بنجاح",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "خطأ",
+        description: "فشل في تحديث بيانات المريض",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     createPatientMutation.mutate(newPatient);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingPatient) {
+      updatePatientMutation.mutate(editingPatient);
+    }
+  };
+
+  const openEditDialog = (patient: Patient) => {
+    setEditingPatient(patient);
+    setIsEditDialogOpen(true);
   };
 
   const viewPatientProfile = (patientId: string) => {
@@ -143,6 +199,22 @@ export default function Patients() {
                 />
               </div>
               <div>
+                <Label htmlFor="address">العنوان</Label>
+                <Input
+                  id="address"
+                  value={newPatient.address}
+                  onChange={(e) => setNewPatient({ ...newPatient, address: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="job">المهنة</Label>
+                <Input
+                  id="job"
+                  value={newPatient.job}
+                  onChange={(e) => setNewPatient({ ...newPatient, job: e.target.value })}
+                />
+              </div>
+              <div>
                 <Label htmlFor="medical_notes">الملاحظات الطبية</Label>
                 <Textarea
                   id="medical_notes"
@@ -189,6 +261,8 @@ export default function Patients() {
                   <TableHead>الاسم</TableHead>
                   <TableHead>تاريخ الميلاد</TableHead>
                   <TableHead>الهاتف</TableHead>
+                  <TableHead>العنوان</TableHead>
+                  <TableHead>المهنة</TableHead>
                   <TableHead>جهة الاتصال</TableHead>
                   <TableHead>الإجراءات</TableHead>
                 </TableRow>
@@ -199,9 +273,19 @@ export default function Patients() {
                     <TableCell className="font-medium">{patient.full_name}</TableCell>
                     <TableCell>{new Date(patient.date_of_birth).toLocaleDateString()}</TableCell>
                     <TableCell>{patient.phone_number}</TableCell>
+                    <TableCell>{patient.address || "-"}</TableCell>
+                    <TableCell>{patient.job || "-"}</TableCell>
                     <TableCell>{patient.contact || "-"}</TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditDialog(patient)}
+                        >
+                          <Edit className="h-4 w-4 ml-1" />
+                          تعديل
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -219,6 +303,81 @@ export default function Patients() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>تعديل بيانات المريض</DialogTitle>
+          </DialogHeader>
+          {editingPatient && (
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="edit_full_name">الاسم الكامل</Label>
+                <Input
+                  id="edit_full_name"
+                  value={editingPatient.full_name}
+                  onChange={(e) => setEditingPatient({ ...editingPatient, full_name: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit_date_of_birth">تاريخ الميلاد</Label>
+                <Input
+                  id="edit_date_of_birth"
+                  type="date"
+                  value={editingPatient.date_of_birth}
+                  onChange={(e) => setEditingPatient({ ...editingPatient, date_of_birth: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit_phone_number">رقم الهاتف</Label>
+                <Input
+                  id="edit_phone_number"
+                  value={editingPatient.phone_number}
+                  onChange={(e) => setEditingPatient({ ...editingPatient, phone_number: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit_contact">جهة اتصال إضافية</Label>
+                <Input
+                  id="edit_contact"
+                  value={editingPatient.contact || ""}
+                  onChange={(e) => setEditingPatient({ ...editingPatient, contact: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit_address">العنوان</Label>
+                <Input
+                  id="edit_address"
+                  value={editingPatient.address || ""}
+                  onChange={(e) => setEditingPatient({ ...editingPatient, address: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit_job">المهنة</Label>
+                <Input
+                  id="edit_job"
+                  value={editingPatient.job || ""}
+                  onChange={(e) => setEditingPatient({ ...editingPatient, job: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit_medical_notes">الملاحظات الطبية</Label>
+                <Textarea
+                  id="edit_medical_notes"
+                  value={editingPatient.medical_notes || ""}
+                  onChange={(e) => setEditingPatient({ ...editingPatient, medical_notes: e.target.value })}
+                />
+              </div>
+              <Button type="submit" disabled={updatePatientMutation.isPending}>
+                {updatePatientMutation.isPending ? "جاري التحديث..." : "تحديث البيانات"}
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
