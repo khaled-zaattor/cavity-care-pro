@@ -21,6 +21,7 @@ export default function Appointments() {
   // Filter states
   const [filterDoctor, setFilterDoctor] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
 
   const [newAppointment, setNewAppointment] = useState({
     patient_id: "",
@@ -41,7 +42,7 @@ export default function Appointments() {
   const navigate = useNavigate();
 
   const { data: appointments, isLoading } = useQuery({
-    queryKey: ["appointments", filterDoctor, filterDate],
+    queryKey: ["appointments", filterDoctor, filterDate, filterStatus],
     queryFn: async () => {
       let query = supabase
         .from("appointments")
@@ -66,6 +67,11 @@ export default function Appointments() {
         query = query
           .gte("scheduled_at", startOfDay.toISOString())
           .lte("scheduled_at", endOfDay.toISOString());
+      }
+
+      // Apply status filter
+      if (filterStatus && filterStatus !== "all") {
+        query = query.eq("status", filterStatus as "Scheduled" | "Completed" | "Cancelled");
       }
 
       const { data, error } = await query.order("scheduled_at", { ascending: false });
@@ -325,7 +331,22 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       </Select>
                     </div>
                   </TableHead>
-                  <TableHead>الحالة</TableHead>
+                  <TableHead>
+                    <div className="space-y-2">
+                      <span>الحالة</span>
+                      <Select value={filterStatus} onValueChange={setFilterStatus}>
+                        <SelectTrigger className="text-xs">
+                          <SelectValue placeholder="جميع الحالات" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">جميع الحالات</SelectItem>
+                          <SelectItem value="Scheduled">مجدول</SelectItem>
+                          <SelectItem value="Completed">مكتمل</SelectItem>
+                          <SelectItem value="Cancelled">ملغي</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </TableHead>
                   <TableHead>ملاحظات</TableHead>
                   <TableHead>الإجراءات</TableHead>
                 </TableRow>
