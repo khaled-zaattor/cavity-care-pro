@@ -6,11 +6,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Calendar, FileText, Edit } from "lucide-react";
+import { Search, Plus, Calendar, FileText, Edit, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Patient {
   id: string;
@@ -120,6 +131,27 @@ export default function Patients() {
       toast({
         title: "خطأ",
         description: "فشل في تحديث بيانات المريض",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deletePatientMutation = useMutation({
+    mutationFn: async (patientId: string) => {
+      const { error } = await supabase.from("patients").delete().eq("id", patientId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patients"] });
+      toast({
+        title: "نجح",
+        description: "تم حذف المريض بنجاح",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "خطأ",
+        description: "فشل في حذف المريض",
         variant: "destructive",
       });
     },
@@ -297,6 +329,31 @@ export default function Patients() {
                               <FileText className="h-4 w-4 ml-1" />
                               الملف الشخصي
                             </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <Trash2 className="h-4 w-4 ml-1" />
+                                  حذف
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    هل أنت متأكد من حذف المريض {patient.full_name}؟ لا يمكن التراجع عن هذا الإجراء.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deletePatientMutation.mutate(patient.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    حذف
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -310,25 +367,49 @@ export default function Patients() {
                 {patients?.map((patient) => (
                   <Card key={patient.id} className="p-4">
                     <div className="space-y-3">
-                      <div className="flex justify-between items-start">
-                        <h3 className="font-semibold text-lg">{patient.full_name}</h3>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEditDialog(patient)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => viewPatientProfile(patient.id)}
-                          >
-                            <FileText className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
+                       <div className="flex justify-between items-start">
+                         <h3 className="font-semibold text-lg">{patient.full_name}</h3>
+                         <div className="flex gap-2">
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             onClick={() => openEditDialog(patient)}
+                           >
+                             <Edit className="h-4 w-4" />
+                           </Button>
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             onClick={() => viewPatientProfile(patient.id)}
+                           >
+                             <FileText className="h-4 w-4" />
+                           </Button>
+                           <AlertDialog>
+                             <AlertDialogTrigger asChild>
+                               <Button variant="outline" size="sm">
+                                 <Trash2 className="h-4 w-4" />
+                               </Button>
+                             </AlertDialogTrigger>
+                             <AlertDialogContent>
+                               <AlertDialogHeader>
+                                 <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+                                 <AlertDialogDescription>
+                                   هل أنت متأكد من حذف المريض {patient.full_name}؟
+                                 </AlertDialogDescription>
+                               </AlertDialogHeader>
+                               <AlertDialogFooter>
+                                 <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                 <AlertDialogAction
+                                   onClick={() => deletePatientMutation.mutate(patient.id)}
+                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                 >
+                                   حذف
+                                 </AlertDialogAction>
+                               </AlertDialogFooter>
+                             </AlertDialogContent>
+                           </AlertDialog>
+                         </div>
+                       </div>
                       
                       <div className="grid grid-cols-1 gap-2 text-sm">
                         <div className="flex justify-between">
