@@ -1,4 +1,4 @@
-import { Users, Calendar, FileText, Stethoscope } from "lucide-react";
+import { Users, Calendar, FileText, Stethoscope, UserCheck } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import {
@@ -17,6 +17,7 @@ import {
 const navItems = [
   { path: "/", label: "لوحة التحكم", icon: Stethoscope },
   { path: "/patients", label: "المرضى", icon: Users },
+  { path: "/doctors", label: "الأطباء", icon: UserCheck },
   { path: "/appointments", label: "المواعيد", icon: Calendar },
   { path: "/treatments", label: "العلاجات", icon: FileText },
 ];
