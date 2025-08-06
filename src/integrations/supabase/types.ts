@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointment_treatment_steps: {
+        Row: {
+          appointment_id: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          is_completed: boolean | null
+          notes: string | null
+          sub_treatment_step_id: string
+          updated_at: string
+        }
+        Insert: {
+          appointment_id: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean | null
+          notes?: string | null
+          sub_treatment_step_id: string
+          updated_at?: string
+        }
+        Update: {
+          appointment_id?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean | null
+          notes?: string | null
+          sub_treatment_step_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_appointment_treatment_steps_appointment_id"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_appointment_treatment_steps_sub_treatment_step_id"
+            columns: ["sub_treatment_step_id"]
+            isOneToOne: false
+            referencedRelation: "sub_treatment_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           created_at: string

@@ -6,8 +6,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, FileText, Filter, X, MessageCircle } from "lucide-react";
+import { Plus, FileText, Filter, X, MessageCircle, CheckSquare } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -16,7 +17,9 @@ import { useNavigate } from "react-router-dom";
 export default function Appointments() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
+  const [isStepsDialogOpen, setIsStepsDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   
   // Filter states
   const [filterDoctor, setFilterDoctor] = useState("");
@@ -121,6 +124,37 @@ export default function Appointments() {
     enabled: !!treatmentRecord.treatment_id,
   });
 
+  // Query to get steps for selected sub-treatment
+  const { data: treatmentSteps } = useQuery({
+    queryKey: ["treatment-steps", treatmentRecord.sub_treatment_id],
+    queryFn: async () => {
+      if (!treatmentRecord.sub_treatment_id) return [];
+      const { data, error } = await supabase
+        .from("sub_treatment_steps")
+        .select("*")
+        .eq("sub_treatment_id", treatmentRecord.sub_treatment_id)
+        .order("step_order");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!treatmentRecord.sub_treatment_id,
+  });
+
+  // Query to get completed steps for an appointment
+  const { data: completedSteps } = useQuery({
+    queryKey: ["completed-steps", selectedAppointment?.id],
+    queryFn: async () => {
+      if (!selectedAppointment?.id) return [];
+      const { data, error } = await supabase
+        .from("appointment_treatment_steps")
+        .select("*")
+        .eq("appointment_id", selectedAppointment.id);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedAppointment?.id,
+  });
+
   const createAppointmentMutation = useMutation({
     mutationFn: async (appointment: typeof newAppointment) => {
       const { data, error } = await supabase.from("appointments").insert([appointment]).select();
@@ -153,6 +187,40 @@ export default function Appointments() {
       setIsRecordDialogOpen(false);
       setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_number: "", actual_cost: "" });
       toast({ title: "Success", description: "Treatment recorded successfully" });
+    },
+  });
+
+  // Mutation to save treatment steps
+  const saveStepsMutation = useMutation({
+    mutationFn: async (steps: string[]) => {
+      if (!selectedAppointment?.id) throw new Error("No appointment selected");
+      
+      // Delete existing steps for this appointment
+      await supabase
+        .from("appointment_treatment_steps")
+        .delete()
+        .eq("appointment_id", selectedAppointment.id);
+
+      // Insert new steps
+      if (steps.length > 0) {
+        const stepData = steps.map(stepId => ({
+          appointment_id: selectedAppointment.id,
+          sub_treatment_step_id: stepId,
+          is_completed: true,
+          completed_at: new Date().toISOString()
+        }));
+
+        const { error } = await supabase
+          .from("appointment_treatment_steps")
+          .insert(stepData);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["completed-steps"] });
+      setIsStepsDialogOpen(false);
+      setSelectedSteps([]);
+      toast({ title: "نجح", description: "تم حفظ خطوات العلاج بنجاح" });
     },
   });
 
@@ -380,24 +448,35 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       <div className="flex space-x-2">
                         {appointment.status === 'Scheduled' && (
                           <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedAppointment(appointment);
-                                setIsRecordDialogOpen(true);
-                              }}
-                            >
-                              <FileText className="h-4 w-4 ml-1" />
-                              تسجيل علاج
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => updateAppointmentStatus(appointment.id, 'Completed')}
-                            >
-                              تمييز كمكتمل
-                            </Button>
+                             <Button
+                               variant="outline"
+                               size="sm"
+                               onClick={() => {
+                                 setSelectedAppointment(appointment);
+                                 setIsRecordDialogOpen(true);
+                               }}
+                             >
+                               <FileText className="h-4 w-4 ml-1" />
+                               تسجيل علاج
+                             </Button>
+                             <Button
+                               variant="outline"
+                               size="sm"
+                               onClick={() => {
+                                 setSelectedAppointment(appointment);
+                                 setIsStepsDialogOpen(true);
+                               }}
+                             >
+                               <CheckSquare className="h-4 w-4 ml-1" />
+                               خطوات العلاج
+                             </Button>
+                             <Button
+                               variant="outline"
+                               size="sm"
+                               onClick={() => updateAppointmentStatus(appointment.id, 'Completed')}
+                             >
+                               تمييز كمكتمل
+                             </Button>
                           </>
                         )}
                         <Button
@@ -498,6 +577,117 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
             </div>
             <Button type="submit" disabled={recordTreatmentMutation.isPending}>
               {recordTreatmentMutation.isPending ? "جاري التسجيل..." : "تسجيل العلاج"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isStepsDialogOpen} onOpenChange={setIsStepsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>تسجيل خطوات العلاج</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            saveStepsMutation.mutate(selectedSteps);
+          }} className="space-y-4">
+            <div>
+              <Label htmlFor="treatment_selection">العلاج</Label>
+              <Select 
+                value={treatmentRecord.treatment_id} 
+                onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, treatment_id: value, sub_treatment_id: "" })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر علاج" />
+                </SelectTrigger>
+                <SelectContent>
+                  {treatments?.map((treatment) => (
+                    <SelectItem key={treatment.id} value={treatment.id}>
+                      {treatment.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {treatmentRecord.treatment_id && (
+              <div>
+                <Label htmlFor="sub_treatment_selection">العلاج الفرعي</Label>
+                <Select 
+                  value={treatmentRecord.sub_treatment_id} 
+                  onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, sub_treatment_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر علاج فرعي" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subTreatments?.map((subTreatment) => (
+                      <SelectItem key={subTreatment.id} value={subTreatment.id}>
+                        {subTreatment.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {treatmentRecord.sub_treatment_id && treatmentSteps && treatmentSteps.length > 0 && (
+              <div className="space-y-3">
+                <Label>خطوات العلاج</Label>
+                <div className="max-h-60 overflow-y-auto space-y-2 border rounded p-3">
+                  {treatmentSteps.map((step) => {
+                    const isCompleted = completedSteps?.some(cs => cs.sub_treatment_step_id === step.id);
+                    const isSelected = selectedSteps.includes(step.id);
+                    
+                    return (
+                      <div key={step.id} className="flex items-start space-x-3 p-2 border rounded">
+                        <Checkbox
+                          id={step.id}
+                          checked={isSelected}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedSteps([...selectedSteps, step.id]);
+                            } else {
+                              setSelectedSteps(selectedSteps.filter(id => id !== step.id));
+                            }
+                          }}
+                        />
+                        <div className="flex-1">
+                          <label htmlFor={step.id} className="text-sm font-medium cursor-pointer">
+                            {step.step_order}. {step.step_name}
+                          </label>
+                          {step.step_description && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {step.step_description}
+                            </p>
+                          )}
+                          {isCompleted && (
+                            <span className="text-xs text-green-600 font-medium">
+                              ✓ تم تنفيذها سابقاً
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  تم اختيار {selectedSteps.length} خطوة من أصل {treatmentSteps.length}
+                </div>
+              </div>
+            )}
+
+            {treatmentRecord.sub_treatment_id && (!treatmentSteps || treatmentSteps.length === 0) && (
+              <div className="text-center py-4 text-muted-foreground">
+                لا توجد خطوات محددة لهذا العلاج الفرعي
+              </div>
+            )}
+
+            <Button 
+              type="submit" 
+              disabled={saveStepsMutation.isPending || !treatmentRecord.sub_treatment_id}
+            >
+              {saveStepsMutation.isPending ? "جاري الحفظ..." : "حفظ الخطوات المنجزة"}
             </Button>
           </form>
         </DialogContent>
