@@ -166,6 +166,39 @@ export type Database = {
           },
         ]
       }
+      sub_treatment_steps: {
+        Row: {
+          completion_percentage: number | null
+          created_at: string
+          id: string
+          step_description: string | null
+          step_name: string
+          step_order: number
+          sub_treatment_id: string
+          updated_at: string
+        }
+        Insert: {
+          completion_percentage?: number | null
+          created_at?: string
+          id?: string
+          step_description?: string | null
+          step_name: string
+          step_order?: number
+          sub_treatment_id: string
+          updated_at?: string
+        }
+        Update: {
+          completion_percentage?: number | null
+          created_at?: string
+          id?: string
+          step_description?: string | null
+          step_name?: string
+          step_order?: number
+          sub_treatment_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sub_treatments: {
         Row: {
           created_at: string
