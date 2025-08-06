@@ -193,8 +193,8 @@ export default function Treatments() {
     );
   };
 
-  const calculateSubTreatmentProgress = (steps: any[]) => {
-    if (!steps || steps.length === 0) return 0;
+  const calculateSubTreatmentProgress = (steps: any[] | null) => {
+    if (!steps || !Array.isArray(steps) || steps.length === 0) return 0;
     const totalPercentage = steps.reduce((sum, step) => sum + (step.completion_percentage || 0), 0);
     return Math.round(totalPercentage / steps.length);
   };
@@ -339,11 +339,11 @@ export default function Treatments() {
                               
                               <Collapsible open={isExpanded}>
                                 <CollapsibleContent className="mt-3">
-                                  {subTreatment.sub_treatment_steps && subTreatment.sub_treatment_steps.length > 0 ? (
-                                    <div className="space-y-2">
-                                      {subTreatment.sub_treatment_steps
-                                        .sort((a, b) => a.step_order - b.step_order)
-                                        .map((step, index) => (
+                                   {subTreatment.sub_treatment_steps && Array.isArray(subTreatment.sub_treatment_steps) && subTreatment.sub_treatment_steps.length > 0 ? (
+                                     <div className="space-y-2">
+                                       {subTreatment.sub_treatment_steps
+                                         .sort((a: any, b: any) => a.step_order - b.step_order)
+                                         .map((step: any, index: number) => (
                                         <div key={step.id} className="flex items-center justify-between bg-background p-2 rounded border">
                                           <div className="flex-1">
                                             <div className="flex items-center space-x-2">

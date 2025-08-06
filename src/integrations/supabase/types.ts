@@ -197,7 +197,15 @@ export type Database = {
           sub_treatment_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_sub_treatment_steps_sub_treatment_id"
+            columns: ["sub_treatment_id"]
+            isOneToOne: false
+            referencedRelation: "sub_treatments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sub_treatments: {
         Row: {
