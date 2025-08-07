@@ -531,17 +531,11 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 <SelectContent>
                   {treatments?.map((treatment) => (
                     <SelectItem key={treatment.id} value={treatment.id}>
-                      {treatment.name} - ${treatment.estimated_cost}
+                      {treatment.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {treatmentRecord.treatment_id && (
-                <div className="mt-2 p-2 bg-blue-50 rounded text-sm">
-                  <span className="font-medium">التكلفة المقدرة: </span>
-                  ${treatments?.find(t => t.id === treatmentRecord.treatment_id)?.estimated_cost}
-                </div>
-              )}
             </div>
             <div>
               <Label htmlFor="sub_treatment_id">العلاج الفرعي</Label>
@@ -555,7 +549,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 <SelectContent>
                   {subTreatments?.map((subTreatment) => (
                     <SelectItem key={subTreatment.id} value={subTreatment.id}>
-                      {subTreatment.name}
+                      {subTreatment.name} - ${subTreatment.estimated_cost}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -23,11 +23,11 @@ export default function Treatments() {
   const [newTreatment, setNewTreatment] = useState({
     name: "",
     description: "",
-    estimated_cost: "",
   });
 
   const [newSubTreatment, setNewSubTreatment] = useState({
     name: "",
+    estimated_cost: "",
   });
 
   const [newStep, setNewStep] = useState({
@@ -50,6 +50,7 @@ export default function Treatments() {
           sub_treatments (
             id, 
             name,
+            estimated_cost,
             sub_treatment_steps (
               id,
               step_name,
@@ -69,7 +70,7 @@ export default function Treatments() {
     mutationFn: async (treatment: typeof newTreatment) => {
       const { data, error } = await supabase
         .from("treatments")
-        .insert([{ ...treatment, estimated_cost: parseFloat(treatment.estimated_cost) }])
+        .insert([treatment])
         .select();
       if (error) throw error;
       return data;
@@ -77,7 +78,7 @@ export default function Treatments() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       setIsTreatmentDialogOpen(false);
-      setNewTreatment({ name: "", description: "", estimated_cost: "" });
+      setNewTreatment({ name: "", description: "" });
       toast({ title: "نجح", description: "تم إنشاء العلاج بنجاح" });
     },
   });
@@ -86,7 +87,11 @@ export default function Treatments() {
     mutationFn: async (subTreatment: typeof newSubTreatment) => {
       const { data, error } = await supabase
         .from("sub_treatments")
-        .insert([{ ...subTreatment, treatment_id: selectedTreatmentId }])
+        .insert([{ 
+          ...subTreatment, 
+          treatment_id: selectedTreatmentId,
+          estimated_cost: parseFloat(subTreatment.estimated_cost) 
+        }])
         .select();
       if (error) throw error;
       return data;
@@ -94,7 +99,7 @@ export default function Treatments() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       setIsSubTreatmentDialogOpen(false);
-      setNewSubTreatment({ name: "" });
+      setNewSubTreatment({ name: "", estimated_cost: "" });
       toast({ title: "نجح", description: "تم إضافة العلاج الفرعي بنجاح" });
     },
   });
@@ -232,17 +237,6 @@ export default function Treatments() {
                   onChange={(e) => setNewTreatment({ ...newTreatment, description: e.target.value })}
                 />
               </div>
-              <div>
-                <Label htmlFor="estimated_cost">التكلفة المقدرة ($)</Label>
-                <Input
-                  id="estimated_cost"
-                  type="number"
-                  step="0.01"
-                  value={newTreatment.estimated_cost}
-                  onChange={(e) => setNewTreatment({ ...newTreatment, estimated_cost: e.target.value })}
-                  required
-                />
-              </div>
               <Button type="submit" disabled={createTreatmentMutation.isPending}>
                 {createTreatmentMutation.isPending ? "جاري الإضافة..." : "إضافة علاج"}
               </Button>
@@ -266,7 +260,6 @@ export default function Treatments() {
                     <div>
                       <h3 className="text-lg font-semibold">{treatment.name}</h3>
                       <p className="text-muted-foreground">{treatment.description}</p>
-                      <p className="text-lg font-bold text-primary">${treatment.estimated_cost}</p>
                     </div>
                     <div className="flex space-x-2">
                       <Button
@@ -309,7 +302,10 @@ export default function Treatments() {
                                   >
                                     {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                   </Button>
-                                  <span className="font-medium">{subTreatment.name}</span>
+                                  <div>
+                                    <span className="font-medium">{subTreatment.name}</span>
+                                    <p className="text-sm font-bold text-primary">${subTreatment.estimated_cost}</p>
+                                  </div>
                                   <div className="flex items-center space-x-2">
                                     <Progress value={progress} className="w-20" />
                                     <span className="text-sm text-muted-foreground">{progress}%</span>
@@ -416,6 +412,17 @@ export default function Treatments() {
                 id="sub_name"
                 value={newSubTreatment.name}
                 onChange={(e) => setNewSubTreatment({ ...newSubTreatment, name: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="sub_estimated_cost">التكلفة المقدرة ($)</Label>
+              <Input
+                id="sub_estimated_cost"
+                type="number"
+                step="0.01"
+                value={newSubTreatment.estimated_cost}
+                onChange={(e) => setNewSubTreatment({ ...newSubTreatment, estimated_cost: e.target.value })}
                 required
               />
             </div>
