@@ -258,6 +258,7 @@ export type Database = {
       sub_treatments: {
         Row: {
           created_at: string
+          estimated_cost: number | null
           id: string
           name: string
           treatment_id: string
@@ -265,6 +266,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          estimated_cost?: number | null
           id?: string
           name: string
           treatment_id: string
@@ -272,6 +274,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          estimated_cost?: number | null
           id?: string
           name?: string
           treatment_id?: string
@@ -349,7 +352,6 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
-          estimated_cost: number
           id: string
           name: string
           updated_at: string
@@ -357,7 +359,6 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
-          estimated_cost: number
           id?: string
           name: string
           updated_at?: string
@@ -365,7 +366,6 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
-          estimated_cost?: number
           id?: string
           name?: string
           updated_at?: string
