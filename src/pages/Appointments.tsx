@@ -171,6 +171,7 @@ export default function Appointments() {
 
   const recordTreatmentMutation = useMutation({
     mutationFn: async (record: typeof treatmentRecord) => {
+      // Insert treatment record
       const { data, error } = await supabase
         .from("treatment_records")
         .insert([{ 
@@ -180,12 +181,30 @@ export default function Appointments() {
         }])
         .select();
       if (error) throw error;
+
+      // Save completed treatment steps if any are selected
+      if (selectedSteps.length > 0) {
+        const stepData = selectedSteps.map(stepId => ({
+          appointment_id: selectedAppointment.id,
+          sub_treatment_step_id: stepId,
+          is_completed: true,
+          completed_at: new Date().toISOString()
+        }));
+
+        const { error: stepsError } = await supabase
+          .from("appointment_treatment_steps")
+          .insert(stepData);
+        if (stepsError) throw stepsError;
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["completed-steps"] });
       setIsRecordDialogOpen(false);
       setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_number: "", actual_cost: "" });
+      setSelectedSteps([]);
       toast({ title: "Success", description: "Treatment recorded successfully" });
     },
   });
@@ -462,17 +481,6 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                              <Button
                                variant="outline"
                                size="sm"
-                               onClick={() => {
-                                 setSelectedAppointment(appointment);
-                                 setIsStepsDialogOpen(true);
-                               }}
-                             >
-                               <CheckSquare className="h-4 w-4 ml-1" />
-                               خطوات العلاج
-                             </Button>
-                             <Button
-                               variant="outline"
-                               size="sm"
                                onClick={() => updateAppointmentStatus(appointment.id, 'Completed')}
                              >
                                تمييز كمكتمل
@@ -575,72 +583,26 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 required
               />
             </div>
-            <Button type="submit" disabled={recordTreatmentMutation.isPending}>
-              {recordTreatmentMutation.isPending ? "جاري التسجيل..." : "تسجيل العلاج"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isStepsDialogOpen} onOpenChange={setIsStepsDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>تسجيل خطوات العلاج</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            saveStepsMutation.mutate(selectedSteps);
-          }} className="space-y-4">
-            <div>
-              <Label htmlFor="treatment_selection">العلاج</Label>
-              <Select 
-                value={treatmentRecord.treatment_id} 
-                onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, treatment_id: value, sub_treatment_id: "" })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر علاج" />
-                </SelectTrigger>
-                <SelectContent>
-                  {treatments?.map((treatment) => (
-                    <SelectItem key={treatment.id} value={treatment.id}>
-                      {treatment.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             
-            {treatmentRecord.treatment_id && (
-              <div>
-                <Label htmlFor="sub_treatment_selection">العلاج الفرعي</Label>
-                <Select 
-                  value={treatmentRecord.sub_treatment_id} 
-                  onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, sub_treatment_id: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر علاج فرعي" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subTreatments?.map((subTreatment) => (
-                      <SelectItem key={subTreatment.id} value={subTreatment.id}>
-                        {subTreatment.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
+            {/* Treatment Steps Section */}
             {treatmentRecord.sub_treatment_id && treatmentSteps && treatmentSteps.length > 0 && (
               <div className="space-y-3">
-                <Label>خطوات العلاج</Label>
-                <div className="max-h-60 overflow-y-auto space-y-2 border rounded p-3">
+                <Label className="text-base font-semibold">خطوات العلاج المنجزة في هذا الموعد</Label>
+                <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-3 bg-muted/30">
                   {treatmentSteps.map((step) => {
-                    const isCompleted = completedSteps?.some(cs => cs.sub_treatment_step_id === step.id);
+                    const isCompleted = completedSteps?.some(
+                      cs => cs.sub_treatment_step_id === step.id
+                    );
                     const isSelected = selectedSteps.includes(step.id);
                     
                     return (
-                      <div key={step.id} className="flex items-start space-x-3 p-2 border rounded">
+                      <div 
+                        key={step.id} 
+                        className={`flex items-center space-x-2 p-3 border rounded-lg transition-colors ${
+                          isCompleted ? 'bg-green-50 border-green-200' : 
+                          isSelected ? 'bg-blue-50 border-blue-200' : 'bg-card'
+                        }`}
+                      >
                         <Checkbox
                           id={step.id}
                           checked={isSelected}
@@ -651,47 +613,39 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                               setSelectedSteps(selectedSteps.filter(id => id !== step.id));
                             }
                           }}
+                          disabled={isCompleted}
                         />
                         <div className="flex-1">
-                          <label htmlFor={step.id} className="text-sm font-medium cursor-pointer">
+                          <Label 
+                            htmlFor={step.id} 
+                            className={`cursor-pointer text-sm font-medium ${isCompleted ? 'text-green-700' : ''}`}
+                          >
                             {step.step_order}. {step.step_name}
-                          </label>
+                            {isCompleted && <span className="text-green-600 mr-2 text-xs">✓ مكتملة سابقاً</span>}
+                          </Label>
                           {step.step_description && (
                             <p className="text-xs text-muted-foreground mt-1">
                               {step.step_description}
                             </p>
-                          )}
-                          {isCompleted && (
-                            <span className="text-xs text-green-600 font-medium">
-                              ✓ تم تنفيذها سابقاً
-                            </span>
                           )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  تم اختيار {selectedSteps.length} خطوة من أصل {treatmentSteps.length}
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  اختر الخطوات التي تم إنجازها في هذا الموعد ({selectedSteps.length} من {treatmentSteps.length} خطوات)
+                </p>
               </div>
             )}
 
-            {treatmentRecord.sub_treatment_id && (!treatmentSteps || treatmentSteps.length === 0) && (
-              <div className="text-center py-4 text-muted-foreground">
-                لا توجد خطوات محددة لهذا العلاج الفرعي
-              </div>
-            )}
-
-            <Button 
-              type="submit" 
-              disabled={saveStepsMutation.isPending || !treatmentRecord.sub_treatment_id}
-            >
-              {saveStepsMutation.isPending ? "جاري الحفظ..." : "حفظ الخطوات المنجزة"}
+            <Button type="submit" disabled={recordTreatmentMutation.isPending}>
+              {recordTreatmentMutation.isPending ? "جاري التسجيل..." : "تسجيل العلاج والخطوات"}
             </Button>
           </form>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
