@@ -564,13 +564,52 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
             </div>
             <div>
               <Label htmlFor="tooth_number">رقم السن</Label>
-              <Input
-                id="tooth_number"
-                value={treatmentRecord.tooth_number}
-                onChange={(e) => setTreatmentRecord({ ...treatmentRecord, tooth_number: e.target.value })}
-                placeholder="مثال: 14، 23، إلخ"
-                required
-              />
+              <Select 
+                value={treatmentRecord.tooth_number} 
+                onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, tooth_number: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر رقم السن" />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">الربع العلوي الأيمن</div>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((tooth) => (
+                    <SelectItem key={tooth} value={tooth.toString()}>
+                      {tooth} - {tooth === 1 || tooth === 8 ? 'ضرس عقل' : 
+                             tooth === 2 || tooth === 7 ? 'ضرس' :
+                             tooth === 3 || tooth === 6 ? 'ضرس' :
+                             tooth === 4 || tooth === 5 ? 'ضاحك' : 'قاطع'}
+                    </SelectItem>
+                  ))}
+                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">الربع العلوي الأيسر</div>
+                  {[9, 10, 11, 12, 13, 14, 15, 16].map((tooth) => (
+                    <SelectItem key={tooth} value={tooth.toString()}>
+                      {tooth} - {tooth === 9 || tooth === 16 ? 'ضرس عقل' : 
+                              tooth === 10 || tooth === 15 ? 'ضرس' :
+                              tooth === 11 || tooth === 14 ? 'ضرس' :
+                              tooth === 12 || tooth === 13 ? 'ضاحك' : 'قاطع'}
+                    </SelectItem>
+                  ))}
+                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">الربع السفلي الأيسر</div>
+                  {[17, 18, 19, 20, 21, 22, 23, 24].map((tooth) => (
+                    <SelectItem key={tooth} value={tooth.toString()}>
+                      {tooth} - {tooth === 17 || tooth === 24 ? 'ضرس عقل' : 
+                              tooth === 18 || tooth === 23 ? 'ضرس' :
+                              tooth === 19 || tooth === 22 ? 'ضرس' :
+                              tooth === 20 || tooth === 21 ? 'ضاحك' : 'قاطع'}
+                    </SelectItem>
+                  ))}
+                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">الربع السفلي الأيمن</div>
+                  {[25, 26, 27, 28, 29, 30, 31, 32].map((tooth) => (
+                    <SelectItem key={tooth} value={tooth.toString()}>
+                      {tooth} - {tooth === 25 || tooth === 32 ? 'ضرس عقل' : 
+                              tooth === 26 || tooth === 31 ? 'ضرس' :
+                              tooth === 27 || tooth === 30 ? 'ضرس' :
+                              tooth === 28 || tooth === 29 ? 'ضاحك' : 'قاطع'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
