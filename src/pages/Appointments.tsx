@@ -541,7 +541,14 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
               <Label htmlFor="sub_treatment_id">العلاج الفرعي</Label>
               <Select 
                 value={treatmentRecord.sub_treatment_id} 
-                onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, sub_treatment_id: value })}
+                onValueChange={(value) => {
+                  const selectedSubTreatment = subTreatments?.find(st => st.id === value);
+                  setTreatmentRecord({ 
+                    ...treatmentRecord, 
+                    sub_treatment_id: value,
+                    actual_cost: selectedSubTreatment?.estimated_cost?.toString() || ""
+                  });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="اختر علاج فرعي" />
@@ -582,7 +589,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
             {treatmentRecord.sub_treatment_id && treatmentSteps && treatmentSteps.length > 0 && (
               <div className="space-y-3">
                 <Label className="text-base font-semibold">خطوات العلاج المنجزة في هذا الموعد</Label>
-                <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-3 bg-muted/30">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto border rounded-lg p-3 bg-muted/30">
                   {treatmentSteps.map((step) => {
                     const isCompleted = completedSteps?.some(
                       cs => cs.sub_treatment_step_id === step.id
@@ -592,7 +599,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     return (
                       <div 
                         key={step.id} 
-                        className={`flex items-center space-x-2 p-3 border rounded-lg transition-colors ${
+                        className={`flex items-start space-x-2 p-3 border rounded-lg transition-colors ${
                           isCompleted ? 'bg-green-50 border-green-200' : 
                           isSelected ? 'bg-blue-50 border-blue-200' : 'bg-card'
                         }`}
@@ -608,14 +615,15 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                             }
                           }}
                           disabled={isCompleted}
+                          className="mt-1"
                         />
                         <div className="flex-1">
                           <Label 
                             htmlFor={step.id} 
-                            className={`cursor-pointer text-sm font-medium ${isCompleted ? 'text-green-700' : ''}`}
+                            className={`cursor-pointer text-sm font-medium block ${isCompleted ? 'text-green-700' : ''}`}
                           >
                             {step.step_order}. {step.step_name}
-                            {isCompleted && <span className="text-green-600 mr-2 text-xs">✓ مكتملة سابقاً</span>}
+                            {isCompleted && <span className="text-green-600 mr-2 text-xs block">✓ مكتملة سابقاً</span>}
                           </Label>
                           {step.step_description && (
                             <p className="text-xs text-muted-foreground mt-1">
