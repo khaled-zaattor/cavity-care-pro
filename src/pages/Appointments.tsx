@@ -563,53 +563,94 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
               </Select>
             </div>
             <div>
-              <Label htmlFor="tooth_number">رقم السن</Label>
-              <Select 
-                value={treatmentRecord.tooth_number} 
-                onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, tooth_number: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر رقم السن" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">الربع العلوي الأيمن</div>
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((tooth) => (
-                    <SelectItem key={tooth} value={tooth.toString()}>
-                      {tooth} - {tooth === 1 || tooth === 8 ? 'ضرس عقل' : 
-                             tooth === 2 || tooth === 7 ? 'ضرس' :
-                             tooth === 3 || tooth === 6 ? 'ضرس' :
-                             tooth === 4 || tooth === 5 ? 'ضاحك' : 'قاطع'}
-                    </SelectItem>
-                  ))}
-                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">الربع العلوي الأيسر</div>
-                  {[9, 10, 11, 12, 13, 14, 15, 16].map((tooth) => (
-                    <SelectItem key={tooth} value={tooth.toString()}>
-                      {tooth} - {tooth === 9 || tooth === 16 ? 'ضرس عقل' : 
-                              tooth === 10 || tooth === 15 ? 'ضرس' :
-                              tooth === 11 || tooth === 14 ? 'ضرس' :
-                              tooth === 12 || tooth === 13 ? 'ضاحك' : 'قاطع'}
-                    </SelectItem>
-                  ))}
-                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">الربع السفلي الأيسر</div>
-                  {[17, 18, 19, 20, 21, 22, 23, 24].map((tooth) => (
-                    <SelectItem key={tooth} value={tooth.toString()}>
-                      {tooth} - {tooth === 17 || tooth === 24 ? 'ضرس عقل' : 
-                              tooth === 18 || tooth === 23 ? 'ضرس' :
-                              tooth === 19 || tooth === 22 ? 'ضرس' :
-                              tooth === 20 || tooth === 21 ? 'ضاحك' : 'قاطع'}
-                    </SelectItem>
-                  ))}
-                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">الربع السفلي الأيمن</div>
-                  {[25, 26, 27, 28, 29, 30, 31, 32].map((tooth) => (
-                    <SelectItem key={tooth} value={tooth.toString()}>
-                      {tooth} - {tooth === 25 || tooth === 32 ? 'ضرس عقل' : 
-                              tooth === 26 || tooth === 31 ? 'ضرس' :
-                              tooth === 27 || tooth === 30 ? 'ضرس' :
-                              tooth === 28 || tooth === 29 ? 'ضاحك' : 'قاطع'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>رقم السن</Label>
+              <div className="border rounded-lg p-4 bg-muted/30">
+                <div className="text-center text-sm font-medium mb-3">مخطط الأسنان - النظام العالمي</div>
+                
+                {/* الفك العلوي */}
+                <div className="mb-4">
+                  <div className="text-xs text-center text-muted-foreground mb-2">الفك العلوي</div>
+                  {/* الصف الأول: 18-11 */}
+                  <div className="grid grid-cols-8 gap-1 mb-1">
+                    {[18, 17, 16, 15, 14, 13, 12, 11].map((toothNum) => (
+                      <button
+                        key={toothNum}
+                        type="button"
+                        onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
+                        className={`h-8 w-8 text-xs font-medium border rounded transition-colors ${
+                          treatmentRecord.tooth_number === toothNum.toString()
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted border-border'
+                        }`}
+                      >
+                        {toothNum}
+                      </button>
+                    ))}
+                  </div>
+                  {/* الصف الثاني: 21-28 */}
+                  <div className="grid grid-cols-8 gap-1">
+                    {[21, 22, 23, 24, 25, 26, 27, 28].map((toothNum) => (
+                      <button
+                        key={toothNum}
+                        type="button"
+                        onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
+                        className={`h-8 w-8 text-xs font-medium border rounded transition-colors ${
+                          treatmentRecord.tooth_number === toothNum.toString()
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted border-border'
+                        }`}
+                      >
+                        {toothNum}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* الفك السفلي */}
+                <div>
+                  <div className="text-xs text-center text-muted-foreground mb-2">الفك السفلي</div>
+                  {/* الصف الثالث: 31-38 */}
+                  <div className="grid grid-cols-8 gap-1 mb-1">
+                    {[31, 32, 33, 34, 35, 36, 37, 38].map((toothNum) => (
+                      <button
+                        key={toothNum}
+                        type="button"
+                        onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
+                        className={`h-8 w-8 text-xs font-medium border rounded transition-colors ${
+                          treatmentRecord.tooth_number === toothNum.toString()
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted border-border'
+                        }`}
+                      >
+                        {toothNum}
+                      </button>
+                    ))}
+                  </div>
+                  {/* الصف الرابع: 48-41 */}
+                  <div className="grid grid-cols-8 gap-1">
+                    {[48, 47, 46, 45, 44, 43, 42, 41].map((toothNum) => (
+                      <button
+                        key={toothNum}
+                        type="button"
+                        onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
+                        className={`h-8 w-8 text-xs font-medium border rounded transition-colors ${
+                          treatmentRecord.tooth_number === toothNum.toString()
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted border-border'
+                        }`}
+                      >
+                        {toothNum}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {treatmentRecord.tooth_number && (
+                  <div className="mt-3 text-center text-sm text-primary">
+                    السن المحدد: {treatmentRecord.tooth_number}
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
