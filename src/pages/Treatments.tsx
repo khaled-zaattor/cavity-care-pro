@@ -201,7 +201,7 @@ export default function Treatments() {
   const calculateSubTreatmentProgress = (steps: any[] | null) => {
     if (!steps || !Array.isArray(steps) || steps.length === 0) return 0;
     const totalPercentage = steps.reduce((sum, step) => sum + (step.completion_percentage || 0), 0);
-    return Math.round(totalPercentage / steps.length);
+    return Math.round(totalPercentage);
   };
 
   return (
@@ -302,10 +302,12 @@ export default function Treatments() {
                                   >
                                     {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                   </Button>
-                                  <div>
-                                    <span className="font-medium">{subTreatment.name}</span>
-                                    <p className="text-sm font-bold text-primary">${subTreatment.estimated_cost}</p>
-                                  </div>
+                                   <div>
+                                     <span className="font-medium">{subTreatment.name}</span>
+                                     {subTreatment.estimated_cost && (
+                                       <p className="text-sm font-bold text-primary">${subTreatment.estimated_cost}</p>
+                                     )}
+                                   </div>
                                   <div className="flex items-center space-x-2">
                                     <Progress value={progress} className="w-20" />
                                     <span className="text-sm text-muted-foreground">{progress}%</span>
