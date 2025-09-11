@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Edit, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Edit, Trash2, ChevronDown, ChevronRight, FileDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 export default function Treatments() {
   const [isTreatmentDialogOpen, setIsTreatmentDialogOpen] = useState(false);
@@ -19,7 +21,69 @@ export default function Treatments() {
   const [selectedTreatmentId, setSelectedTreatmentId] = useState("");
   const [selectedSubTreatmentId, setSelectedSubTreatmentId] = useState("");
   const [expandedSubTreatments, setExpandedSubTreatments] = useState<string[]>([]);
-  
+
+  const exportToExcel = () => {
+    if (!treatments || treatments.length === 0) return;
+
+    // تحضير البيانات للتصدير
+    const data = [];
+
+    for (const treatment of treatments) {
+      if (treatment.sub_treatments && treatment.sub_treatments.length > 0) {
+        for (const subTreatment of treatment.sub_treatments) {
+          data.push({
+            'العلاج': treatment.name,
+            'وصف العلاج': treatment.description || '-',
+            'العلاج الفرعي': subTreatment.name,
+            'التكلفة التقديرية': subTreatment.estimated_cost || '-',
+            'عدد الخطوات': subTreatment.sub_treatment_steps?.length || 0,
+            'نسبة الإكمال': `${calculateSubTreatmentProgress(subTreatment.sub_treatment_steps)}%`
+          });
+        }
+      } else {
+        data.push({
+          'العلاج': treatment.name,
+          'وصف العلاج': treatment.description || '-',
+          'العلاج الفرعي': '-',
+          'التكلفة التقديرية': '-',
+          'عدد الخطوات': 0,
+          'نسبة الإكمال': '0%'
+        });
+      }
+    }
+
+    // إنشاء ورقة عمل
+    const worksheet = XLSX.utils.json_to_sheet(data, {
+      header: ['العلاج', 'وصف العلاج', 'العلاج الفرعي', 'التكلفة التقديرية', 'عدد الخطوات', 'نسبة الإكمال']
+    });
+
+    // تعديل اتجاه النص للغة العربية
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
+        if (!cell) continue;
+        cell.s = { alignment: { horizontal: 'right', vertical: 'center' } };
+      }
+    }
+
+    // إنشاء مصنف عمل
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'العلاجات');
+
+    // تحويل المصنف إلى ملف
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const fileData = new Blob([excelBuffer], { type: 'application/octet-stream' });
+
+    // حفظ الملف
+    saveAs(fileData, `قائمة_العلاجات_${new Date().toLocaleDateString()}.xlsx`);
+
+    toast({
+      title: "تم التصدير بنجاح",
+      description: "تم تصدير قائمة العلاجات إلى ملف إكسل",
+    });
+  };
+
   const [newTreatment, setNewTreatment] = useState({
     name: "",
     description: "",
@@ -87,10 +151,10 @@ export default function Treatments() {
     mutationFn: async (subTreatment: typeof newSubTreatment) => {
       const { data, error } = await supabase
         .from("sub_treatments")
-        .insert([{ 
-          ...subTreatment, 
+        .insert([{
+          ...subTreatment,
           treatment_id: selectedTreatmentId,
-          estimated_cost: parseFloat(subTreatment.estimated_cost) 
+          estimated_cost: parseFloat(subTreatment.estimated_cost)
         }])
         .select();
       if (error) throw error;
@@ -108,8 +172,8 @@ export default function Treatments() {
     mutationFn: async (step: typeof newStep) => {
       const { data, error } = await supabase
         .from("sub_treatment_steps")
-        .insert([{ 
-          ...step, 
+        .insert([{
+          ...step,
           sub_treatment_id: selectedSubTreatmentId,
           step_order: parseInt(step.step_order),
           completion_percentage: parseFloat(step.completion_percentage)
@@ -191,7 +255,7 @@ export default function Treatments() {
   };
 
   const toggleSubTreatmentExpansion = (subTreatmentId: string) => {
-    setExpandedSubTreatments(prev => 
+    setExpandedSubTreatments(prev =>
       prev.includes(subTreatmentId)
         ? prev.filter(id => id !== subTreatmentId)
         : [...prev, subTreatmentId]
@@ -205,12 +269,12 @@ export default function Treatments() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">العلاجات</h1>
+    <div className="space-y-4 lg:space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl lg:text-3xl font-bold">العلاجات</h1>
         <Dialog open={isTreatmentDialogOpen} onOpenChange={setIsTreatmentDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="ml-2 h-4 w-4" />
               إضافة علاج
             </Button>
@@ -246,12 +310,21 @@ export default function Treatments() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>العلاجات والعلاجات الفرعية</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportToExcel}
+            disabled={!treatments || treatments.length === 0}
+          >
+            <FileDown className="ml-2 h-4 w-4" />
+            تصدير إلى إكسل
+          </Button>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div>جاري تحميل العلاجات...</div>
+            <div className="text-center py-8">جاري تحميل العلاجات...</div>
           ) : (
             <div className="space-y-6">
               {treatments?.map((treatment) => (
@@ -282,7 +355,7 @@ export default function Treatments() {
                       </Button>
                     </div>
                   </div>
-                  
+
                   {treatment.sub_treatments && treatment.sub_treatments.length > 0 && (
                     <div>
                       <h4 className="font-medium mb-2">العلاجات الفرعية:</h4>
@@ -290,7 +363,7 @@ export default function Treatments() {
                         {treatment.sub_treatments.map((subTreatment) => {
                           const isExpanded = expandedSubTreatments.includes(subTreatment.id);
                           const progress = calculateSubTreatmentProgress(subTreatment.sub_treatment_steps);
-                          
+
                           return (
                             <div key={subTreatment.id} className="border rounded p-3 bg-muted/50">
                               <div className="flex justify-between items-center">
@@ -302,12 +375,12 @@ export default function Treatments() {
                                   >
                                     {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                   </Button>
-                                   <div>
-                                     <span className="font-medium">{subTreatment.name}</span>
-                                     {subTreatment.estimated_cost && (
-                                       <p className="text-sm font-bold text-primary">${subTreatment.estimated_cost}</p>
-                                     )}
-                                   </div>
+                                  <div>
+                                    <span className="font-medium">{subTreatment.name}</span>
+                                    {subTreatment.estimated_cost && (
+                                      <p className="text-sm font-bold text-primary">${subTreatment.estimated_cost}</p>
+                                    )}
+                                  </div>
                                   <div className="flex items-center space-x-2">
                                     <Progress value={progress} className="w-20" />
                                     <span className="text-sm text-muted-foreground">{progress}%</span>
@@ -334,55 +407,55 @@ export default function Treatments() {
                                   </Button>
                                 </div>
                               </div>
-                              
+
                               <Collapsible open={isExpanded}>
                                 <CollapsibleContent className="mt-3">
-                                   {subTreatment.sub_treatment_steps && Array.isArray(subTreatment.sub_treatment_steps) && subTreatment.sub_treatment_steps.length > 0 ? (
-                                     <div className="space-y-2">
-                                       {subTreatment.sub_treatment_steps
-                                         .sort((a: any, b: any) => a.step_order - b.step_order)
-                                         .map((step: any, index: number) => (
-                                        <div key={step.id} className="flex items-center justify-between bg-background p-2 rounded border">
-                                          <div className="flex-1">
-                                            <div className="flex items-center space-x-2">
-                                              <span className="text-sm font-medium">
-                                                {index + 1}. {step.step_name}
-                                              </span>
+                                  {subTreatment.sub_treatment_steps && Array.isArray(subTreatment.sub_treatment_steps) && subTreatment.sub_treatment_steps.length > 0 ? (
+                                    <div className="space-y-2">
+                                      {subTreatment.sub_treatment_steps
+                                        .sort((a: any, b: any) => a.step_order - b.step_order)
+                                        .map((step: any, index: number) => (
+                                          <div key={step.id} className="flex items-center justify-between bg-background p-2 rounded border">
+                                            <div className="flex-1">
+                                              <div className="flex items-center space-x-2">
+                                                <span className="text-sm font-medium">
+                                                  {index + 1}. {step.step_name}
+                                                </span>
+                                              </div>
+                                              {step.step_description && (
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                  {step.step_description}
+                                                </p>
+                                              )}
                                             </div>
-                                            {step.step_description && (
-                                              <p className="text-xs text-muted-foreground mt-1">
-                                                {step.step_description}
-                                              </p>
-                                            )}
+                                            <div className="flex items-center space-x-2">
+                                              <Input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={step.completion_percentage || 0}
+                                                onChange={(e) => {
+                                                  const percentage = parseFloat(e.target.value) || 0;
+                                                  if (percentage >= 0 && percentage <= 100) {
+                                                    updateStepPercentageMutation.mutate({
+                                                      stepId: step.id,
+                                                      percentage
+                                                    });
+                                                  }
+                                                }}
+                                                className="w-16 text-center"
+                                              />
+                                              <span className="text-sm">%</span>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => deleteStepMutation.mutate(step.id)}
+                                              >
+                                                <Trash2 className="h-3 w-3" />
+                                              </Button>
+                                            </div>
                                           </div>
-                                          <div className="flex items-center space-x-2">
-                                            <Input
-                                              type="number"
-                                              min="0"
-                                              max="100"
-                                              value={step.completion_percentage || 0}
-                                              onChange={(e) => {
-                                                const percentage = parseFloat(e.target.value) || 0;
-                                                if (percentage >= 0 && percentage <= 100) {
-                                                  updateStepPercentageMutation.mutate({
-                                                    stepId: step.id,
-                                                    percentage
-                                                  });
-                                                }
-                                              }}
-                                              className="w-16 text-center"
-                                            />
-                                            <span className="text-sm">%</span>
-                                            <Button
-                                              variant="ghost"
-                                              size="sm"
-                                              onClick={() => deleteStepMutation.mutate(step.id)}
-                                            >
-                                              <Trash2 className="h-3 w-3" />
-                                            </Button>
-                                          </div>
-                                        </div>
-                                      ))}
+                                        ))}
                                     </div>
                                   ) : (
                                     <p className="text-sm text-muted-foreground">لا توجد خطوات لهذا العلاج الفرعي</p>

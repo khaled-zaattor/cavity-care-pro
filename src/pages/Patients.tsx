@@ -6,11 +6,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Calendar, FileText, Edit, Trash2 } from "lucide-react";
+import { Search, Plus, Calendar, FileText, Edit, Trash2, FileDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,6 +50,50 @@ export default function Patients() {
     address: "",
     job: "",
   });
+  
+  const exportToExcel = () => {
+    if (!patients || patients.length === 0) return;
+    
+    // تحويل البيانات إلى تنسيق مناسب للإكسل
+    const data = patients.map(patient => ({
+      'الاسم': patient.full_name,
+      'تاريخ الميلاد': new Date(patient.date_of_birth).toLocaleDateString(),
+      'الهاتف': patient.phone_number,
+      'العنوان': patient.address || '-',
+      'المهنة': patient.job || '-',
+      'جهة الاتصال': patient.contact || '-',
+      'الملاحظات الطبية': patient.medical_notes || '-'
+    }));
+    
+    // إنشاء ورقة عمل
+    const worksheet = XLSX.utils.json_to_sheet(data, { header: ['الاسم', 'تاريخ الميلاد', 'الهاتف', 'العنوان', 'المهنة', 'جهة الاتصال', 'الملاحظات الطبية'] });
+    
+    // تعديل اتجاه النص للغة العربية
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
+        if (!cell) continue;
+        cell.s = { alignment: { horizontal: 'right', vertical: 'center' } };
+      }
+    }
+    
+    // إنشاء مصنف عمل
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'المرضى');
+    
+    // تحويل المصنف إلى ملف
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const fileData = new Blob([excelBuffer], { type: 'application/octet-stream' });
+    
+    // حفظ الملف
+    saveAs(fileData, `قائمة_المرضى_${new Date().toLocaleDateString()}.xlsx`);
+    
+    toast({
+      title: "تم التصدير بنجاح",
+      description: "تم تصدير قائمة المرضى إلى ملف إكسل",
+    });
+  };
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -280,8 +326,17 @@ export default function Patients() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>قائمة المرضى</CardTitle>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={exportToExcel}
+            disabled={!patients || patients.length === 0}
+          >
+            <FileDown className="ml-2 h-4 w-4" />
+            تصدير إلى إكسل
+          </Button>
         </CardHeader>
         <CardContent>
           {isLoading ? (

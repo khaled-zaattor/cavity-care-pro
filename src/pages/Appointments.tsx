@@ -18,9 +18,11 @@ export default function Appointments() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
   const [isStepsDialogOpen, setIsStepsDialogOpen] = useState(false);
+  const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
-  
+  const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<any>(null);
+
   // Filter states
   const [filterDoctor, setFilterDoctor] = useState("");
   const [filterDate, setFilterDate] = useState("");
@@ -66,7 +68,7 @@ export default function Appointments() {
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(filterDate);
         endOfDay.setHours(23, 59, 59, 999);
-        
+
         query = query
           .gte("scheduled_at", startOfDay.toISOString())
           .lte("scheduled_at", endOfDay.toISOString());
@@ -155,6 +157,78 @@ export default function Appointments() {
     enabled: !!selectedAppointment?.id,
   });
 
+  // Query to get unfinished treatments for a patient
+  const { data: unfinishedTreatments, error: unfinishedError } = useQuery({
+    queryKey: ["unfinished-treatments", selectedAppointment?.patient_id],
+    queryFn: async () => {
+      if (!selectedAppointment?.patient_id) return [];
+
+      // Get all treatment records for this patient by joining through appointments
+      const { data: allRecords, error: recordsError } = await supabase
+        .from("treatment_records")
+        .select(`
+          *,
+          treatments (name),
+          sub_treatments (name),
+          appointments!inner (patient_id)
+        `)
+        .eq("appointments.patient_id", selectedAppointment.patient_id);
+
+      if (recordsError) {
+        console.error("Error fetching treatment records:", recordsError);
+        throw recordsError;
+      }
+
+      console.log("All treatment records for patient:", allRecords);
+
+      // Filter for incomplete records (is_completed is false or null)
+      const incompleteRecords = allRecords?.filter(record =>
+        !record.is_completed
+      ) || [];
+
+      console.log("Incomplete records:", incompleteRecords);
+
+      return incompleteRecords.map(record => ({
+        ...record,
+        treatment_name: record.treatments?.name,
+        sub_treatment_name: record.sub_treatments?.name,
+        patient_id: selectedAppointment.patient_id
+      }));
+    },
+    enabled: !!selectedAppointment?.patient_id,
+  });
+
+  // Query to get steps for the selected treatment record
+  const { data: resumeTreatmentSteps } = useQuery({
+    queryKey: ["resume-treatment-steps", selectedTreatmentRecord?.sub_treatment_id],
+    queryFn: async () => {
+      if (!selectedTreatmentRecord?.sub_treatment_id) return [];
+      const { data, error } = await supabase
+        .from("sub_treatment_steps")
+        .select("*")
+        .eq("sub_treatment_id", selectedTreatmentRecord.sub_treatment_id)
+        .order("step_order");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedTreatmentRecord?.sub_treatment_id,
+  });
+
+  // Query to get completed steps for the selected treatment record
+  const { data: resumeCompletedSteps } = useQuery({
+    queryKey: ["resume-completed-steps", selectedTreatmentRecord?.appointment_id],
+    queryFn: async () => {
+      if (!selectedTreatmentRecord?.appointment_id) return [];
+      const { data, error } = await supabase
+        .from("appointment_treatment_steps")
+        .select("*")
+        .eq("appointment_id", selectedTreatmentRecord.appointment_id);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedTreatmentRecord?.appointment_id,
+  });
+
   const createAppointmentMutation = useMutation({
     mutationFn: async (appointment: typeof newAppointment) => {
       const { data, error } = await supabase.from("appointments").insert([appointment]).select();
@@ -174,8 +248,8 @@ export default function Appointments() {
       // Insert treatment record
       const { data, error } = await supabase
         .from("treatment_records")
-        .insert([{ 
-          ...record, 
+        .insert([{
+          ...record,
           appointment_id: selectedAppointment.id,
           actual_cost: record.actual_cost ? parseFloat(record.actual_cost) : null
         }])
@@ -213,7 +287,7 @@ export default function Appointments() {
   const saveStepsMutation = useMutation({
     mutationFn: async (steps: string[]) => {
       if (!selectedAppointment?.id) throw new Error("No appointment selected");
-      
+
       // Delete existing steps for this appointment
       await supabase
         .from("appointment_treatment_steps")
@@ -243,6 +317,49 @@ export default function Appointments() {
     },
   });
 
+  // Mutation to resume treatment steps
+  const resumeStepsMutation = useMutation({
+    mutationFn: async (steps: string[]) => {
+      if (!selectedTreatmentRecord?.appointment_id) throw new Error("No treatment record selected");
+
+      // Insert new completed steps for the current appointment
+      if (steps.length > 0) {
+        const stepData = steps.map(stepId => ({
+          appointment_id: selectedAppointment.id,
+          sub_treatment_step_id: stepId,
+          is_completed: true,
+          completed_at: new Date().toISOString()
+        }));
+
+        const { error } = await supabase
+          .from("appointment_treatment_steps")
+          .insert(stepData);
+        if (error) throw error;
+      }
+
+      // Check if all steps are completed and mark treatment as completed
+      const allSteps = resumeTreatmentSteps || [];
+      const allCompletedSteps = [...(resumeCompletedSteps || []), ...stepData];
+      const completedStepIds = allCompletedSteps.map(cs => cs.sub_treatment_step_id);
+      const allStepsCompleted = allSteps.every(step => completedStepIds.includes(step.id));
+
+      if (allStepsCompleted) {
+        await supabase
+          .from("treatment_records")
+          .update({ is_completed: true })
+          .eq("id", selectedTreatmentRecord.id);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["unfinished-treatments"] });
+      queryClient.invalidateQueries({ queryKey: ["resume-completed-steps"] });
+      setIsResumeDialogOpen(false);
+      setSelectedSteps([]);
+      setSelectedTreatmentRecord(null);
+      toast({ title: "نجح", description: "تم استكمال خطوات العلاج بنجاح" });
+    },
+  });
+
   const updateAppointmentStatus = async (appointmentId: string, status: "Scheduled" | "Completed" | "Cancelled") => {
     const { error } = await supabase
       .from("appointments")
@@ -269,19 +386,19 @@ export default function Appointments() {
 
   const sendWhatsAppMessage = (appointment: any) => {
     if (!appointment.patients?.phone_number) {
-      toast({ 
-        title: "خطأ", 
-        description: "رقم هاتف المريض غير متوفر", 
-        variant: "destructive" 
+      toast({
+        title: "خطأ",
+        description: "رقم هاتف المريض غير متوفر",
+        variant: "destructive"
       });
       return;
     }
 
     const appointmentDate = new Date(appointment.scheduled_at);
     const formattedDate = appointmentDate.toLocaleDateString('ar-SA');
-    const formattedTime = appointmentDate.toLocaleTimeString('ar-SA', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    const formattedTime = appointmentDate.toLocaleTimeString('ar-SA', {
+      hour: '2-digit',
+      minute: '2-digit'
     });
 
     const message = `مرحباً ${appointment.patients.full_name}،
@@ -300,7 +417,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
 
     const phoneNumber = appointment.patients.phone_number.replace(/[^0-9]/g, '');
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
-    
+
     window.open(whatsappUrl, '_blank');
   };
 
@@ -453,13 +570,12 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        appointment.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                      <span className={`px-2 py-1 rounded text-xs ${appointment.status === 'Completed' ? 'bg-green-100 text-green-800' :
                         appointment.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
+                          'bg-red-100 text-red-800'
+                        }`}>
                         {appointment.status === 'Completed' ? 'مكتمل' :
-                         appointment.status === 'Scheduled' ? 'مجدول' : 'ملغي'}
+                          appointment.status === 'Scheduled' ? 'مجدول' : 'ملغي'}
                       </span>
                     </TableCell>
                     <TableCell>{appointment.notes || "-"}</TableCell>
@@ -467,24 +583,36 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       <div className="flex space-x-2">
                         {appointment.status === 'Scheduled' && (
                           <>
-                             <Button
-                               variant="outline"
-                               size="sm"
-                               onClick={() => {
-                                 setSelectedAppointment(appointment);
-                                 setIsRecordDialogOpen(true);
-                               }}
-                             >
-                               <FileText className="h-4 w-4 ml-1" />
-                               تسجيل علاج
-                             </Button>
-                             <Button
-                               variant="outline"
-                               size="sm"
-                               onClick={() => updateAppointmentStatus(appointment.id, 'Completed')}
-                             >
-                               تمييز كمكتمل
-                             </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedAppointment(appointment);
+                                setIsRecordDialogOpen(true);
+                              }}
+                            >
+                              <FileText className="h-4 w-4 ml-1" />
+                              تسجيل علاج
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedAppointment(appointment);
+                                setIsResumeDialogOpen(true);
+                              }}
+                              className="text-orange-600 hover:text-orange-700"
+                            >
+                              <CheckSquare className="h-4 w-4 ml-1" />
+                              استكمال علاج
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => updateAppointmentStatus(appointment.id, 'Completed')}
+                            >
+                              تمييز كمكتمل
+                            </Button>
                           </>
                         )}
                         <Button
@@ -514,175 +642,174 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
       </Card>
 
       <Dialog open={isRecordDialogOpen} onOpenChange={setIsRecordDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>تسجيل علاج</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleRecordTreatment} className="space-y-4">
-            <div>
-              <Label htmlFor="treatment_id">العلاج</Label>
-              <Select 
-                value={treatmentRecord.treatment_id} 
-                onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, treatment_id: value, sub_treatment_id: "" })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر علاج" />
-                </SelectTrigger>
-                <SelectContent>
-                  {treatments?.map((treatment) => (
-                    <SelectItem key={treatment.id} value={treatment.id}>
-                      {treatment.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="sub_treatment_id">العلاج الفرعي</Label>
-              <Select 
-                value={treatmentRecord.sub_treatment_id} 
-                onValueChange={(value) => {
-                  const selectedSubTreatment = subTreatments?.find(st => st.id === value);
-                  setTreatmentRecord({ 
-                    ...treatmentRecord, 
-                    sub_treatment_id: value,
-                    actual_cost: selectedSubTreatment?.estimated_cost?.toString() || ""
-                  });
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر علاج فرعي" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subTreatments?.map((subTreatment) => (
-                    <SelectItem key={subTreatment.id} value={subTreatment.id}>
-                      {subTreatment.name} - ${subTreatment.estimated_cost}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>رقم السن</Label>
-              <div className="border rounded-lg p-4 bg-muted/30">
-                <div className="text-center text-sm font-medium mb-3">مخطط الأسنان - النظام العالمي</div>
-                
-                {/* الفك العلوي */}
-                <div className="mb-4">
-                  <div className="text-xs text-center text-muted-foreground mb-2">الفك العلوي</div>
-                  {/* الصف الأول: 18-11 */}
-                  <div className="grid grid-cols-8 gap-1 mb-1">
-                    {[18, 17, 16, 15, 14, 13, 12, 11].map((toothNum) => (
-                      <button
-                        key={toothNum}
-                        type="button"
-                        onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
-                        className={`h-8 w-8 text-xs font-medium border rounded transition-colors ${
-                          treatmentRecord.tooth_number === toothNum.toString()
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background hover:bg-muted border-border'
-                        }`}
-                      >
-                        {toothNum}
-                      </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="treatment_id">العلاج</Label>
+                <Select
+                  value={treatmentRecord.treatment_id}
+                  onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, treatment_id: value, sub_treatment_id: "" })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر علاج" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {treatments?.map((treatment) => (
+                      <SelectItem key={treatment.id} value={treatment.id}>
+                        {treatment.name}
+                      </SelectItem>
                     ))}
-                  </div>
-                  {/* الصف الثاني: 21-28 */}
-                  <div className="grid grid-cols-8 gap-1">
-                    {[21, 22, 23, 24, 25, 26, 27, 28].map((toothNum) => (
-                      <button
-                        key={toothNum}
-                        type="button"
-                        onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
-                        className={`h-8 w-8 text-xs font-medium border rounded transition-colors ${
-                          treatmentRecord.tooth_number === toothNum.toString()
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background hover:bg-muted border-border'
-                        }`}
-                      >
-                        {toothNum}
-                      </button>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="sub_treatment_id">العلاج الفرعي</Label>
+                <Select
+                  value={treatmentRecord.sub_treatment_id}
+                  onValueChange={(value) => {
+                    const selectedSubTreatment = subTreatments?.find(st => st.id === value);
+                    setTreatmentRecord({
+                      ...treatmentRecord,
+                      sub_treatment_id: value,
+                      actual_cost: selectedSubTreatment?.estimated_cost?.toString() || ""
+                    });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر علاج فرعي" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subTreatments?.map((subTreatment) => (
+                      <SelectItem key={subTreatment.id} value={subTreatment.id}>
+                        {subTreatment.name} - ${subTreatment.estimated_cost}
+                      </SelectItem>
                     ))}
-                  </div>
-                </div>
-
-                {/* الفك السفلي */}
-                <div>
-                  <div className="text-xs text-center text-muted-foreground mb-2">الفك السفلي</div>
-                  {/* الصف الثالث: 31-38 */}
-                  <div className="grid grid-cols-8 gap-1 mb-1">
-                    {[31, 32, 33, 34, 35, 36, 37, 38].map((toothNum) => (
-                      <button
-                        key={toothNum}
-                        type="button"
-                        onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
-                        className={`h-8 w-8 text-xs font-medium border rounded transition-colors ${
-                          treatmentRecord.tooth_number === toothNum.toString()
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background hover:bg-muted border-border'
-                        }`}
-                      >
-                        {toothNum}
-                      </button>
-                    ))}
-                  </div>
-                  {/* الصف الرابع: 48-41 */}
-                  <div className="grid grid-cols-8 gap-1">
-                    {[48, 47, 46, 45, 44, 43, 42, 41].map((toothNum) => (
-                      <button
-                        key={toothNum}
-                        type="button"
-                        onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
-                        className={`h-8 w-8 text-xs font-medium border rounded transition-colors ${
-                          treatmentRecord.tooth_number === toothNum.toString()
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background hover:bg-muted border-border'
-                        }`}
-                      >
-                        {toothNum}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                {treatmentRecord.tooth_number && (
-                  <div className="mt-3 text-center text-sm text-primary">
-                    السن المحدد: {treatmentRecord.tooth_number}
-                  </div>
-                )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-            <div>
-              <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
-              <Input
-                id="actual_cost"
-                type="number"
-                step="0.01"
-                value={treatmentRecord.actual_cost}
-                onChange={(e) => setTreatmentRecord({ ...treatmentRecord, actual_cost: e.target.value })}
-                placeholder="أدخل التكلفة الحقيقية"
-                required
-              />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <Label>رقم السن</Label>
+                <div className="border rounded-lg p-3 bg-muted/30">
+                  <div className="text-center text-xs font-medium mb-2">مخطط الأسنان - النظام العالمي</div>
+
+                  {/* الفك العلوي */}
+                  <div className="mb-3">
+                    <div className="text-xs text-center text-muted-foreground mb-1">الفك العلوي</div>
+                    {/* الصف الأول: 18-11 */}
+                    <div className="grid grid-cols-8 gap-1 mb-1">
+                      {[18, 17, 16, 15, 14, 13, 12, 11].map((toothNum) => (
+                        <button
+                          key={toothNum}
+                          type="button"
+                          onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
+                          className={`h-6 w-6 text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_number === toothNum.toString()
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted border-border'
+                            }`}
+                        >
+                          {toothNum}
+                        </button>
+                      ))}
+                    </div>
+                    {/* الصف الثاني: 21-28 */}
+                    <div className="grid grid-cols-8 gap-1">
+                      {[21, 22, 23, 24, 25, 26, 27, 28].map((toothNum) => (
+                        <button
+                          key={toothNum}
+                          type="button"
+                          onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
+                          className={`h-6 w-6 text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_number === toothNum.toString()
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted border-border'
+                            }`}
+                        >
+                          {toothNum}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* الفك السفلي */}
+                  <div>
+                    <div className="text-xs text-center text-muted-foreground mb-1">الفك السفلي</div>
+                    {/* الصف الثالث: 31-38 */}
+                    <div className="grid grid-cols-8 gap-1 mb-1">
+                      {[31, 32, 33, 34, 35, 36, 37, 38].map((toothNum) => (
+                        <button
+                          key={toothNum}
+                          type="button"
+                          onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
+                          className={`h-6 w-6 text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_number === toothNum.toString()
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted border-border'
+                            }`}
+                        >
+                          {toothNum}
+                        </button>
+                      ))}
+                    </div>
+                    {/* الصف الرابع: 48-41 */}
+                    <div className="grid grid-cols-8 gap-1">
+                      {[48, 47, 46, 45, 44, 43, 42, 41].map((toothNum) => (
+                        <button
+                          key={toothNum}
+                          type="button"
+                          onClick={() => setTreatmentRecord({ ...treatmentRecord, tooth_number: toothNum.toString() })}
+                          className={`h-6 w-6 text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_number === toothNum.toString()
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted border-border'
+                            }`}
+                        >
+                          {toothNum}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {treatmentRecord.tooth_number && (
+                    <div className="mt-2 text-center text-xs text-primary">
+                      السن المحدد: {treatmentRecord.tooth_number}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
+                <Input
+                  id="actual_cost"
+                  type="number"
+                  step="0.01"
+                  value={treatmentRecord.actual_cost}
+                  onChange={(e) => setTreatmentRecord({ ...treatmentRecord, actual_cost: e.target.value })}
+                  placeholder="أدخل التكلفة الحقيقية"
+                  required
+                />
+              </div>
             </div>
-            
+
             {/* Treatment Steps Section */}
             {treatmentRecord.sub_treatment_id && treatmentSteps && treatmentSteps.length > 0 && (
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">خطوات العلاج المنجزة في هذا الموعد</Label>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto border rounded-lg p-3 bg-muted/30">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">خطوات العلاج المنجزة في هذا الموعد</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-lg p-2 bg-muted/30">
                   {treatmentSteps.map((step) => {
                     const isCompleted = completedSteps?.some(
                       cs => cs.sub_treatment_step_id === step.id
                     );
                     const isSelected = selectedSteps.includes(step.id);
-                    
+
                     return (
-                      <div 
-                        key={step.id} 
-                        className={`flex items-start space-x-2 p-3 border rounded-lg transition-colors ${
-                          isCompleted ? 'bg-green-50 border-green-200' : 
+                      <div
+                        key={step.id}
+                        className={`flex items-start space-x-2 p-2 border rounded transition-colors ${isCompleted ? 'bg-green-50 border-green-200' :
                           isSelected ? 'bg-blue-50 border-blue-200' : 'bg-card'
-                        }`}
+                          }`}
                       >
                         <Checkbox
                           id={step.id}
@@ -695,18 +822,18 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                             }
                           }}
                           disabled={isCompleted}
-                          className="mt-1"
+                          className="mt-0.5"
                         />
-                        <div className="flex-1">
-                          <Label 
-                            htmlFor={step.id} 
-                            className={`cursor-pointer text-sm font-medium block ${isCompleted ? 'text-green-700' : ''}`}
+                        <div className="flex-1 min-w-0">
+                          <Label
+                            htmlFor={step.id}
+                            className={`cursor-pointer text-xs font-medium block ${isCompleted ? 'text-green-700' : ''}`}
                           >
                             {step.step_order}. {step.step_name}
-                            {isCompleted && <span className="text-green-600 mr-2 text-xs block">✓ مكتملة سابقاً</span>}
+                            {isCompleted && <span className="text-green-600 mr-1 text-xs">✓</span>}
                           </Label>
                           {step.step_description && (
-                            <p className="text-xs text-muted-foreground mt-1">
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
                               {step.step_description}
                             </p>
                           )}
@@ -716,7 +843,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   })}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  اختر الخطوات التي تم إنجازها في هذا الموعد ({selectedSteps.length} من {treatmentSteps.length} خطوات)
+                  ({selectedSteps.length} من {treatmentSteps.length} خطوات محددة)
                 </p>
               </div>
             )}
@@ -725,6 +852,126 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
               {recordTreatmentMutation.isPending ? "جاري التسجيل..." : "تسجيل العلاج والخطوات"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isResumeDialogOpen} onOpenChange={setIsResumeDialogOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>استكمال علاج - {selectedAppointment?.patients?.full_name}</DialogTitle>
+          </DialogHeader>
+
+          {console.log("Unfinished treatments:", unfinishedTreatments, "Error:", unfinishedError)}
+          {unfinishedTreatments && unfinishedTreatments.length > 0 ? (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-base font-semibold">اختر العلاج المراد استكماله</Label>
+                <div className="grid gap-3 mt-2">
+                  {unfinishedTreatments.map((treatment) => (
+                    <Card
+                      key={treatment.id}
+                      className={`cursor-pointer transition-colors ${selectedTreatmentRecord?.id === treatment.id
+                        ? 'border-primary bg-primary/5'
+                        : 'hover:bg-muted/50'
+                        }`}
+                      onClick={() => {
+                        setSelectedTreatmentRecord(treatment);
+                        setSelectedSteps([]);
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold">{treatment.treatment_name}</h4>
+                            <p className="text-sm text-muted-foreground">{treatment.sub_treatment_name}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              السن: {treatment.tooth_number} | التكلفة: ${treatment.actual_cost}
+                            </p>
+                          </div>
+                          <div className="text-xs text-orange-600 font-medium">
+                            غير مكتمل
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+
+              {selectedTreatmentRecord && resumeTreatmentSteps && resumeTreatmentSteps.length > 0 && (
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold">خطوات العلاج المتبقية</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto border rounded-lg p-3 bg-muted/30">
+                    {resumeTreatmentSteps.map((step) => {
+                      const isCompleted = resumeCompletedSteps?.some(
+                        cs => cs.sub_treatment_step_id === step.id
+                      );
+                      const isSelected = selectedSteps.includes(step.id);
+
+                      return (
+                        <div
+                          key={step.id}
+                          className={`flex items-start space-x-2 p-3 border rounded-lg transition-colors ${isCompleted ? 'bg-green-50 border-green-200' :
+                            isSelected ? 'bg-blue-50 border-blue-200' : 'bg-card'
+                            }`}
+                        >
+                          <Checkbox
+                            id={`resume-${step.id}`}
+                            checked={isSelected}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedSteps([...selectedSteps, step.id]);
+                              } else {
+                                setSelectedSteps(selectedSteps.filter(id => id !== step.id));
+                              }
+                            }}
+                            disabled={isCompleted}
+                            className="mt-1"
+                          />
+                          <div className="flex-1">
+                            <Label
+                              htmlFor={`resume-${step.id}`}
+                              className={`cursor-pointer text-sm font-medium block ${isCompleted ? 'text-green-700' : ''}`}
+                            >
+                              {step.step_order}. {step.step_name}
+                              {isCompleted && <span className="text-green-600 mr-2 text-xs block">✓ مكتملة سابقاً</span>}
+                            </Label>
+                            {step.step_description && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {step.step_description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    اختر الخطوات التي تم إنجازها في هذا الموعد ({selectedSteps.length} خطوات جديدة)
+                  </p>
+                </div>
+              )}
+
+              {selectedTreatmentRecord && (
+                <Button
+                  onClick={() => resumeStepsMutation.mutate(selectedSteps)}
+                  disabled={resumeStepsMutation.isPending || selectedSteps.length === 0}
+                  className="w-full"
+                >
+                  {resumeStepsMutation.isPending ? "جاري الحفظ..." : `حفظ ${selectedSteps.length} خطوات مكتملة`}
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <CheckSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+              <p>لا توجد علاجات غير مكتملة لهذا المريض</p>
+              {unfinishedError && (
+                <p className="text-red-500 text-sm mt-2">خطأ: {unfinishedError.message}</p>
+              )}
+              <p className="text-xs mt-2">معرف المريض: {selectedAppointment?.patient_id}</p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
