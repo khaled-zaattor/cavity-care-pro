@@ -183,7 +183,7 @@ export default function Appointments() {
 
       // Filter for incomplete records (is_completed is false or null)
       const incompleteRecords = allRecords?.filter(record =>
-        !record.is_completed
+        record.is_completed === false || record.is_completed === null
       ) || [];
 
       console.log("Incomplete records:", incompleteRecords);
@@ -339,14 +339,20 @@ export default function Appointments() {
 
       // Check if all steps are completed and mark treatment as completed
       const allSteps = resumeTreatmentSteps || [];
-      const allCompletedSteps = [...(resumeCompletedSteps || []), ...stepData];
-      const completedStepIds = allCompletedSteps.map(cs => cs.sub_treatment_step_id);
+      const currentStepData = steps || [];
+      const allCompletedSteps = [...(resumeCompletedSteps || []), ...currentStepData];
+      const completedStepIds = allCompletedSteps
+        .filter(cs => typeof cs === 'object' && cs.sub_treatment_step_id)
+        .map(cs => (cs as any).sub_treatment_step_id);
       const allStepsCompleted = allSteps.every(step => completedStepIds.includes(step.id));
 
       if (allStepsCompleted) {
         await supabase
           .from("treatment_records")
-          .update({ is_completed: true })
+          .update({ 
+            is_completed: true,
+            updated_at: new Date().toISOString()
+          })
           .eq("id", selectedTreatmentRecord.id);
       }
     },
@@ -861,7 +867,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
             <DialogTitle>استكمال علاج - {selectedAppointment?.patients?.full_name}</DialogTitle>
           </DialogHeader>
 
-          {console.log("Unfinished treatments:", unfinishedTreatments, "Error:", unfinishedError)}
+          {/* Debug info - remove in production */}
           {unfinishedTreatments && unfinishedTreatments.length > 0 ? (
             <div className="space-y-4">
               <div>

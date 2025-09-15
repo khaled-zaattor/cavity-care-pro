@@ -149,8 +149,11 @@ export default function PatientProfile() {
           *,
           treatments (name),
           sub_treatments (name),
-          appointments!inner (patient_id, scheduled_at),
-          doctors:appointments(doctors(full_name))
+          appointments!inner (
+            patient_id, 
+            scheduled_at,
+            doctors (full_name)
+          )
         `)
         .eq("appointments.patient_id", patientId)
         .order("created_at", { ascending: false });
@@ -167,8 +170,11 @@ export default function PatientProfile() {
         .from("payments")
         .select(`
           *,
-          appointments!inner (patient_id, scheduled_at),
-          doctors:appointments(doctors(full_name))
+          appointments!inner (
+            patient_id, 
+            scheduled_at,
+            doctors (full_name)
+          )
         `)
         .eq("appointments.patient_id", patientId)
         .order("paid_at", { ascending: false });
@@ -617,7 +623,7 @@ export default function PatientProfile() {
                           {payment.appointments?.doctors?.full_name || '-'}
                         </TableCell>
                         <TableCell>
-                          {payment.notes || '-'}
+                          {(payment as any).notes || '-'}
                         </TableCell>
                       </TableRow>
                     ))}

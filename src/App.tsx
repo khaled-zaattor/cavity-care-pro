@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Layout } from "@/components/Layout";
+import { AuthWrapper } from "@/components/AuthWrapper";
 import Index from "./pages/Index";
 import Patients from "./pages/Patients";
 import PatientProfile from "./pages/PatientProfile";
@@ -21,17 +22,19 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/patients" element={<Layout><Patients /></Layout>} />
-          <Route path="/patient-profile/:patientId" element={<Layout><PatientProfile /></Layout>} />
-          <Route path="/doctors" element={<Layout><Doctors /></Layout>} />
-          <Route path="/doctor-profile/:doctorId" element={<Layout><DoctorProfile /></Layout>} />
-          <Route path="/appointments" element={<Layout><Appointments /></Layout>} />
-          <Route path="/treatments" element={<Layout><Treatments /></Layout>} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthWrapper>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/patients" element={<Layout><Patients /></Layout>} />
+            <Route path="/patient-profile/:patientId" element={<Layout><PatientProfile /></Layout>} />
+            <Route path="/doctors" element={<Layout><Doctors /></Layout>} />
+            <Route path="/doctor-profile/:doctorId" element={<Layout><DoctorProfile /></Layout>} />
+            <Route path="/appointments" element={<Layout><Appointments /></Layout>} />
+            <Route path="/treatments" element={<Layout><Treatments /></Layout>} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthWrapper>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
