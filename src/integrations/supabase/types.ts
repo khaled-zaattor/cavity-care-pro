@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.12 (cd3cf9e)"
@@ -142,6 +142,7 @@ export type Database = {
       }
       patients: {
         Row: {
+          accessed_by_user_id: string | null
           address: string | null
           contact: string | null
           created_at: string
@@ -149,11 +150,13 @@ export type Database = {
           full_name: string
           id: string
           job: string | null
+          last_accessed_at: string | null
           medical_notes: string | null
           phone_number: string
           updated_at: string
         }
         Insert: {
+          accessed_by_user_id?: string | null
           address?: string | null
           contact?: string | null
           created_at?: string
@@ -161,11 +164,13 @@ export type Database = {
           full_name: string
           id?: string
           job?: string | null
+          last_accessed_at?: string | null
           medical_notes?: string | null
           phone_number: string
           updated_at?: string
         }
         Update: {
+          accessed_by_user_id?: string | null
           address?: string | null
           contact?: string | null
           created_at?: string
@@ -173,6 +178,7 @@ export type Database = {
           full_name?: string
           id?: string
           job?: string | null
+          last_accessed_at?: string | null
           medical_notes?: string | null
           phone_number?: string
           updated_at?: string
@@ -296,6 +302,7 @@ export type Database = {
           appointment_id: string
           created_at: string
           id: string
+          is_completed: boolean | null
           performed_at: string
           sub_treatment_id: string
           tooth_number: string
@@ -307,6 +314,7 @@ export type Database = {
           appointment_id: string
           created_at?: string
           id?: string
+          is_completed?: boolean | null
           performed_at?: string
           sub_treatment_id: string
           tooth_number: string
@@ -318,6 +326,7 @@ export type Database = {
           appointment_id?: string
           created_at?: string
           id?: string
+          is_completed?: boolean | null
           performed_at?: string
           sub_treatment_id?: string
           tooth_number?: string
@@ -371,6 +380,77 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      unfinished_sub_treatments: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_marked_complete: boolean | null
+          last_appointment_id: string | null
+          notes: string | null
+          patient_id: string
+          started_at: string | null
+          sub_treatment_id: string
+          tooth_number: string
+          treatment_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_marked_complete?: boolean | null
+          last_appointment_id?: string | null
+          notes?: string | null
+          patient_id: string
+          started_at?: string | null
+          sub_treatment_id: string
+          tooth_number: string
+          treatment_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_marked_complete?: boolean | null
+          last_appointment_id?: string | null
+          notes?: string | null
+          patient_id?: string
+          started_at?: string | null
+          sub_treatment_id?: string
+          tooth_number?: string
+          treatment_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unfinished_sub_treatments_last_appointment_id_fkey"
+            columns: ["last_appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unfinished_sub_treatments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unfinished_sub_treatments_sub_treatment_id_fkey"
+            columns: ["sub_treatment_id"]
+            isOneToOne: false
+            referencedRelation: "sub_treatments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unfinished_sub_treatments_treatment_id_fkey"
+            columns: ["treatment_id"]
+            isOneToOne: false
+            referencedRelation: "treatments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
