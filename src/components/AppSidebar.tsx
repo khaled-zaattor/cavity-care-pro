@@ -1,4 +1,4 @@
-import { Users, Calendar, FileText, Stethoscope, UserCheck } from "lucide-react";
+import { Users, Calendar, FileText, Stethoscope, UserCheck, Settings } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import {
@@ -20,6 +20,7 @@ const navItems = [
   { path: "/doctors", label: "الأطباء", icon: UserCheck },
   { path: "/appointments", label: "المواعيد", icon: Calendar },
   { path: "/treatments", label: "العلاجات", icon: FileText },
+  { path: "/admin", label: "إدارة النظام", icon: Settings },
 ];
 
 export function AppSidebar() {
