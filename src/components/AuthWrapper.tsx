@@ -157,7 +157,9 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-green-700">
               <Shield className="h-4 w-4" />
-              <span className="text-sm font-medium">محمي بالمصادقة</span>
+              <span className="text-sm font-medium">
+                {user?.email?.replace(/@gmail\.com$/, '') || user?.email || 'مستخدم'}
+              </span>
               <Button 
                 variant="ghost" 
                 size="sm" 
