@@ -30,11 +30,11 @@ export const Layout = ({ children }: LayoutProps) => {
         <div className="flex-1 flex flex-col min-w-0">
           {/* Mobile Header */}
           <header className="bg-card border-b p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <SidebarTrigger />
+            <div className="flex items-center gap-3 flex-row-reverse">
               <h2 className="text-lg lg:text-xl font-semibold truncate">
                 {currentPage}
               </h2>
+              <SidebarTrigger />
             </div>
           </header>
           
