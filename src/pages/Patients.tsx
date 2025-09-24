@@ -359,14 +359,18 @@ export default function Patients() {
                   </TableHeader>
                   <TableBody>
                     {patients?.map((patient) => (
-                      <TableRow key={patient.id}>
+                      <TableRow 
+                        key={patient.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => viewPatientProfile(patient.id)}
+                      >
                         <TableCell className="font-medium">{patient.full_name}</TableCell>
                         <TableCell>{new Date(patient.date_of_birth).toLocaleDateString()}</TableCell>
                         <TableCell>{patient.phone_number}</TableCell>
                         <TableCell>{patient.address || "-"}</TableCell>
                         <TableCell>{patient.job || "-"}</TableCell>
                         <TableCell>{patient.contact || "-"}</TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <div className="flex space-x-2">
                             <Button
                               variant="outline"
@@ -420,11 +424,15 @@ export default function Patients() {
               {/* Mobile Cards */}
               <div className="md:hidden space-y-4">
                 {patients?.map((patient) => (
-                  <Card key={patient.id} className="p-4">
+                  <Card 
+                    key={patient.id} 
+                    className="p-4 cursor-pointer hover:bg-muted/50"
+                    onClick={() => viewPatientProfile(patient.id)}
+                  >
                     <div className="space-y-3">
                        <div className="flex justify-between items-start">
                          <h3 className="font-semibold text-lg">{patient.full_name}</h3>
-                         <div className="flex gap-2">
+                         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                            <Button
                              variant="outline"
                              size="sm"

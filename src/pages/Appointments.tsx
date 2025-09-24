@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Plus, FileText, Filter, X, MessageCircle, CheckSquare, MoreHorizontal } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,6 +23,7 @@ export default function Appointments() {
   const [isStepsDialogOpen, setIsStepsDialogOpen] = useState(false);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<any>(null);
 
@@ -567,7 +569,14 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
               </TableHeader>
               <TableBody>
                 {appointments?.map((appointment) => (
-                  <TableRow key={appointment.id}>
+                  <TableRow 
+                    key={appointment.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setSelectedAppointment(appointment);
+                      setShowOptionsMenu(true);
+                    }}
+                  >
                     <TableCell>
                       {new Date(appointment.scheduled_at).toLocaleString()}
                     </TableCell>
@@ -589,7 +598,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       </span>
                     </TableCell>
                     <TableCell>{appointment.notes || "-"}</TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       {isMobile ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1031,6 +1040,89 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 <p className="text-red-500 text-sm mt-2">خطأ: {unfinishedError.message}</p>
               )}
               <p className="text-xs mt-2">معرف المريض: {selectedAppointment?.patient_id}</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Options Menu Dialog */}
+      <Dialog open={showOptionsMenu} onOpenChange={setShowOptionsMenu}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>خيارات الموعد</DialogTitle>
+          </DialogHeader>
+          {selectedAppointment && (
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground mb-4">
+                المريض: {selectedAppointment.patients?.full_name}
+              </div>
+              {selectedAppointment.status === 'Scheduled' && (
+                <>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setIsRecordDialogOpen(true);
+                      setShowOptionsMenu(false);
+                    }}
+                  >
+                    <FileText className="h-4 w-4 ml-1" />
+                    تسجيل علاج
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setIsResumeDialogOpen(true);
+                      setShowOptionsMenu(false);
+                    }}
+                  >
+                    <CheckSquare className="h-4 w-4 ml-1" />
+                    استكمال علاج
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      updateAppointmentStatus(selectedAppointment.id, 'Completed');
+                      setShowOptionsMenu(false);
+                    }}
+                  >
+                    تمييز كمكتمل
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      updateAppointmentStatus(selectedAppointment.id, 'Cancelled');
+                      setShowOptionsMenu(false);
+                    }}
+                  >
+                    إلغاء الموعد
+                  </Button>
+                </>
+              )}
+              <Button
+                variant="outline"
+                className="w-full justify-start text-green-600 hover:text-green-700"
+                onClick={() => {
+                  sendWhatsAppMessage(selectedAppointment);
+                  setShowOptionsMenu(false);
+                }}
+              >
+                <MessageCircle className="h-4 w-4 ml-1" />
+                إرسال واتساب
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => {
+                  navigate(`/patient-profile/${selectedAppointment.patient_id}`);
+                  setShowOptionsMenu(false);
+                }}
+              >
+                عرض ملف المريض
+              </Button>
             </div>
           )}
         </DialogContent>
