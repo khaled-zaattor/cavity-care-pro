@@ -8,11 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, FileText, Filter, X, MessageCircle, CheckSquare } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus, FileText, Filter, X, MessageCircle, CheckSquare, MoreHorizontal } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Appointments() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -22,6 +24,8 @@ export default function Appointments() {
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<any>(null);
+
+  const isMobile = useIsMobile();
 
   // Filter states
   const [filterDoctor, setFilterDoctor] = useState("");
@@ -586,58 +590,109 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     </TableCell>
                     <TableCell>{appointment.notes || "-"}</TableCell>
                     <TableCell>
-                      <div className="flex space-x-2">
-                        {appointment.status === 'Scheduled' && (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedAppointment(appointment);
-                                setIsRecordDialogOpen(true);
-                              }}
-                            >
-                              <FileText className="h-4 w-4 ml-1" />
-                              تسجيل علاج
+                      {isMobile ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <MoreHorizontal className="h-4 w-4 ml-1" />
+                              خيارات
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedAppointment(appointment);
-                                setIsResumeDialogOpen(true);
-                              }}
-                              className="text-orange-600 hover:text-orange-700"
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            {appointment.status === 'Scheduled' && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedAppointment(appointment);
+                                    setIsRecordDialogOpen(true);
+                                  }}
+                                >
+                                  <FileText className="h-4 w-4 ml-1" />
+                                  تسجيل علاج
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedAppointment(appointment);
+                                    setIsResumeDialogOpen(true);
+                                  }}
+                                >
+                                  <CheckSquare className="h-4 w-4 ml-1" />
+                                  استكمال علاج
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => updateAppointmentStatus(appointment.id, 'Completed')}
+                                >
+                                  تمييز كمكتمل
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => sendWhatsAppMessage(appointment)}
                             >
-                              <CheckSquare className="h-4 w-4 ml-1" />
-                              استكمال علاج
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => updateAppointmentStatus(appointment.id, 'Completed')}
+                              <MessageCircle className="h-4 w-4 ml-1" />
+                              واتساب
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => navigate(`/patient-profile/${appointment.patient_id}`)}
                             >
-                              تمييز كمكتمل
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => sendWhatsAppMessage(appointment)}
-                          className="text-green-600 hover:text-green-700"
-                        >
-                          <MessageCircle className="h-4 w-4 ml-1" />
-                          واتساب
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(`/patient-profile/${appointment.patient_id}`)}
-                        >
-                          عرض المريض
-                        </Button>
-                      </div>
+                              عرض المريض
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <div className="flex space-x-2">
+                          {appointment.status === 'Scheduled' && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedAppointment(appointment);
+                                  setIsRecordDialogOpen(true);
+                                }}
+                              >
+                                <FileText className="h-4 w-4 ml-1" />
+                                تسجيل علاج
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedAppointment(appointment);
+                                  setIsResumeDialogOpen(true);
+                                }}
+                                className="text-orange-600 hover:text-orange-700"
+                              >
+                                <CheckSquare className="h-4 w-4 ml-1" />
+                                استكمال علاج
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => updateAppointmentStatus(appointment.id, 'Completed')}
+                              >
+                                تمييز كمكتمل
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => sendWhatsAppMessage(appointment)}
+                            className="text-green-600 hover:text-green-700"
+                          >
+                            <MessageCircle className="h-4 w-4 ml-1" />
+                            واتساب
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/patient-profile/${appointment.patient_id}`)}
+                          >
+                            عرض المريض
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
