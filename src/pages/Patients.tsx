@@ -52,11 +52,19 @@ export default function Patients() {
   });
   const [importingFile, setImportingFile] = useState(false);
   
-  const exportToExcel = () => {
-    if (!patients || patients.length === 0) return;
-    
-    // تحويل البيانات إلى تنسيق مناسب للإكسل
-    const data = patients.map(patient => ({
+  const exportToExcel = async () => {
+    try {
+      // جلب جميع المرضى بدون فلترة
+      const { data: allPatients, error } = await supabase
+        .from("patients")
+        .select("*")
+        .order("full_name");
+      
+      if (error) throw error;
+      if (!allPatients || allPatients.length === 0) return;
+      
+      // تحويل البيانات إلى تنسيق مناسب للإكسل
+      const data = allPatients.map(patient => ({
       'الاسم': patient.full_name,
       'تاريخ الميلاد': new Date(patient.date_of_birth).toLocaleDateString(),
       'الهاتف': patient.phone_number,
@@ -94,6 +102,14 @@ export default function Patients() {
       title: "تم التصدير بنجاح",
       description: "تم تصدير قائمة المرضى إلى ملف إكسل",
     });
+    } catch (error) {
+      console.error('Error exporting patients:', error);
+      toast({
+        title: "خطأ في التصدير",
+        description: "حدث خطأ أثناء تصدير قائمة المرضى",
+        variant: "destructive",
+      });
+    }
   };
 
   const importFromExcel = (event: React.ChangeEvent<HTMLInputElement>) => {
