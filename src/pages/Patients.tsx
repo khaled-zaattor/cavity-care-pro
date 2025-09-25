@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Calendar, FileText, Edit, Trash2, FileDown } from "lucide-react";
+import { Search, Plus, Calendar, FileText, Edit, Trash2, FileDown, Upload } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +50,7 @@ export default function Patients() {
     address: "",
     job: "",
   });
+  const [importingFile, setImportingFile] = useState(false);
   
   const exportToExcel = () => {
     if (!patients || patients.length === 0) return;
@@ -93,6 +94,87 @@ export default function Patients() {
       title: "تم التصدير بنجاح",
       description: "تم تصدير قائمة المرضى إلى ملف إكسل",
     });
+  };
+
+  const importFromExcel = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportingFile(true);
+    const reader = new FileReader();
+    
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        // تخطي الصف الأول (العناوين)
+        const rows = jsonData.slice(1) as any[][];
+        const validPatients = [];
+        
+        for (const row of rows) {
+          if (!row[0] || !row[1] || !row[2]) continue; // تأكد من وجود الاسم وتاريخ الميلاد والهاتف
+          
+          const patientData = {
+            full_name: row[0]?.toString() || '',
+            date_of_birth: row[1] ? new Date(row[1]).toISOString().split('T')[0] : '',
+            phone_number: row[2]?.toString() || '',
+            address: row[3]?.toString() === '-' ? '' : row[3]?.toString() || '',
+            job: row[4]?.toString() === '-' ? '' : row[4]?.toString() || '',
+            contact: row[5]?.toString() === '-' ? '' : row[5]?.toString() || '',
+            medical_notes: row[6]?.toString() === '-' ? '' : row[6]?.toString() || '',
+          };
+          
+          if (patientData.full_name && patientData.date_of_birth && patientData.phone_number) {
+            validPatients.push(patientData);
+          }
+        }
+        
+        if (validPatients.length === 0) {
+          toast({
+            title: "خطأ في الاستيراد",
+            description: "لا توجد بيانات صالحة في الملف",
+            variant: "destructive",
+          });
+          setImportingFile(false);
+          return;
+        }
+        
+        // إدراج البيانات في قاعدة البيانات
+        const { data: insertedData, error } = await supabase
+          .from("patients")
+          .insert(validPatients)
+          .select();
+          
+        if (error) {
+          toast({
+            title: "خطأ في الاستيراد",
+            description: "فشل في حفظ البيانات في قاعدة البيانات",
+            variant: "destructive",
+          });
+        } else {
+          queryClient.invalidateQueries({ queryKey: ["patients"] });
+          toast({
+            title: "نجح الاستيراد",
+            description: `تم استيراد ${validPatients.length} مريض بنجاح`,
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "خطأ في قراءة الملف",
+          description: "تأكد من أن الملف بتنسيق إكسل صحيح",
+          variant: "destructive",
+        });
+      } finally {
+        setImportingFile(false);
+        event.target.value = ''; // إعادة تعيين قيمة المدخل
+      }
+    };
+    
+    reader.readAsArrayBuffer(file);
   };
 
   const { toast } = useToast();
@@ -326,17 +408,38 @@ export default function Patients() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <CardTitle>قائمة المرضى</CardTitle>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={exportToExcel}
-            disabled={!patients || patients.length === 0}
-          >
-            <FileDown className="ml-2 h-4 w-4" />
-            تصدير إلى إكسل
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div className="relative">
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={importFromExcel}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                disabled={importingFile}
+              />
+              <Button 
+                variant="outline" 
+                size="sm"
+                disabled={importingFile}
+                className="w-full sm:w-auto"
+              >
+                <Upload className="ml-2 h-4 w-4" />
+                {importingFile ? "جاري الاستيراد..." : "استيراد من إكسل"}
+              </Button>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={exportToExcel}
+              disabled={!patients || patients.length === 0}
+              className="w-full sm:w-auto"
+            >
+              <FileDown className="ml-2 h-4 w-4" />
+              تصدير إلى إكسل
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
