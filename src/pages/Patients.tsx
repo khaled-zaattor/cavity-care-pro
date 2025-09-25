@@ -54,54 +54,70 @@ export default function Patients() {
   
   const exportToExcel = async () => {
     try {
-      // جلب جميع المرضى بدون فلترة
-      const { data: allPatients, error } = await supabase
-        .from("patients")
-        .select("*")
-        .order("full_name");
-      
-      if (error) throw error;
-      if (!allPatients || allPatients.length === 0) return;
+      // جلب المرضى على دفعات لتجاوز حد 1000 صف لكل طلب
+      const pageSize = 1000;
+      let offset = 0;
+      let allPatients: any[] = [];
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("patients")
+          .select("*")
+          .order("full_name")
+          .range(offset, offset + pageSize - 1);
+
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        allPatients = allPatients.concat(data);
+        if (data.length < pageSize) break; // آخر دفعة
+        offset += pageSize;
+      }
+
+      if (!allPatients || allPatients.length === 0) {
+        toast({ title: "لا توجد بيانات", description: "لا يوجد مرضى للتصدير" });
+        return;
+      }
       
       // تحويل البيانات إلى تنسيق مناسب للإكسل
-      const data = allPatients.map(patient => ({
-      'الاسم': patient.full_name,
-      'تاريخ الميلاد': new Date(patient.date_of_birth).toLocaleDateString(),
-      'الهاتف': patient.phone_number,
-      'العنوان': patient.address || '-',
-      'المهنة': patient.job || '-',
-      'جهة الاتصال': patient.contact || '-',
-      'الملاحظات الطبية': patient.medical_notes || '-'
-    }));
-    
-    // إنشاء ورقة عمل
-    const worksheet = XLSX.utils.json_to_sheet(data, { header: ['الاسم', 'تاريخ الميلاد', 'الهاتف', 'العنوان', 'المهنة', 'جهة الاتصال', 'الملاحظات الطبية'] });
-    
-    // تعديل اتجاه النص للغة العربية
-    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-    for (let R = range.s.r; R <= range.e.r; ++R) {
-      for (let C = range.s.c; C <= range.e.c; ++C) {
-        const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
-        if (!cell) continue;
-        cell.s = { alignment: { horizontal: 'right', vertical: 'center' } };
+      const dataForExcel = allPatients.map((patient) => ({
+        'الاسم': patient.full_name,
+        'تاريخ الميلاد': new Date(patient.date_of_birth).toLocaleDateString(),
+        'الهاتف': patient.phone_number,
+        'العنوان': patient.address || '-',
+        'المهنة': patient.job || '-',
+        'جهة الاتصال': patient.contact || '-',
+        'الملاحظات الطبية': patient.medical_notes || '-',
+      }));
+      
+      // إنشاء ورقة عمل
+      const worksheet = XLSX.utils.json_to_sheet(dataForExcel, { header: ['الاسم', 'تاريخ الميلاد', 'الهاتف', 'العنوان', 'المهنة', 'جهة الاتصال', 'الملاحظات الطبية'] });
+      
+      // تعديل اتجاه النص للغة العربية
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
+          if (!cell) continue;
+          cell.s = { alignment: { horizontal: 'right', vertical: 'center' } } as any;
+        }
       }
-    }
-    
-    // إنشاء مصنف عمل
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'المرضى');
-    
-    // تحويل المصنف إلى ملف
-    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    const fileData = new Blob([excelBuffer], { type: 'application/octet-stream' });
-    
-    // حفظ الملف
-    saveAs(fileData, `قائمة_المرضى_${new Date().toLocaleDateString()}.xlsx`);
-    
-    toast({
-      title: "تم التصدير بنجاح",
-      description: "تم تصدير قائمة المرضى إلى ملف إكسل",
-    });
+      
+      // إنشاء مصنف عمل
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'المرضى');
+      
+      // تحويل المصنف إلى ملف
+      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const fileData = new Blob([excelBuffer], { type: 'application/octet-stream' });
+      
+      // حفظ الملف
+      saveAs(fileData, `قائمة_المرضى_${new Date().toLocaleDateString()}.xlsx`);
+      
+      toast({
+        title: "تم التصدير بنجاح",
+        description: `تم تصدير ${allPatients.length} مريضًا إلى ملف إكسل`,
+      });
     } catch (error) {
       console.error('Error exporting patients:', error);
       toast({
