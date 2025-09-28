@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Edit, Trash2, ChevronDown, ChevronRight, FileDown } from "lucide-react";
+import { Plus, Edit, Trash2, ChevronDown, ChevronRight, FileDown, Upload } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,7 @@ export default function Treatments() {
   const [selectedTreatmentId, setSelectedTreatmentId] = useState("");
   const [selectedSubTreatmentId, setSelectedSubTreatmentId] = useState("");
   const [expandedSubTreatments, setExpandedSubTreatments] = useState<string[]>([]);
+  const [importingFile, setImportingFile] = useState(false);
 
   const exportToExcel = () => {
     if (!treatments || treatments.length === 0) return;
@@ -82,6 +83,82 @@ export default function Treatments() {
       title: "تم التصدير بنجاح",
       description: "تم تصدير قائمة العلاجات إلى ملف إكسل",
     });
+  };
+
+  const importFromExcel = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportingFile(true);
+    const reader = new FileReader();
+    
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        // تخطي الصف الأول (العناوين)
+        const rows = jsonData.slice(1) as any[][];
+        const validTreatments = [];
+        
+        for (const row of rows) {
+          if (!row[0]) continue; // تأكد من وجود اسم العلاج
+          
+          const treatmentData = {
+            name: row[0]?.toString() || '',
+            description: row[1]?.toString() === '-' ? '' : row[1]?.toString() || '',
+          };
+          
+          if (treatmentData.name) {
+            validTreatments.push(treatmentData);
+          }
+        }
+        
+        if (validTreatments.length === 0) {
+          toast({
+            title: "خطأ في الاستيراد",
+            description: "لا توجد بيانات صالحة في الملف",
+            variant: "destructive",
+          });
+          setImportingFile(false);
+          return;
+        }
+        
+        // إدراج البيانات في قاعدة البيانات
+        const { data: insertedData, error } = await supabase
+          .from("treatments")
+          .insert(validTreatments)
+          .select();
+          
+        if (error) {
+          toast({
+            title: "خطأ في الاستيراد",
+            description: "فشل في حفظ البيانات في قاعدة البيانات",
+            variant: "destructive",
+          });
+        } else {
+          queryClient.invalidateQueries({ queryKey: ["treatments"] });
+          toast({
+            title: "نجح الاستيراد",
+            description: `تم استيراد ${validTreatments.length} علاج بنجاح`,
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "خطأ في قراءة الملف",
+          description: "تأكد من أن الملف بتنسيق إكسل صحيح",
+          variant: "destructive",
+        });
+      } finally {
+        setImportingFile(false);
+        event.target.value = ''; // إعادة تعيين قيمة المدخل
+      }
+    };
+    
+    reader.readAsArrayBuffer(file);
   };
 
   const [newTreatment, setNewTreatment] = useState({
@@ -310,17 +387,38 @@ export default function Treatments() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <CardTitle>العلاجات والعلاجات الفرعية</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportToExcel}
-            disabled={!treatments || treatments.length === 0}
-          >
-            <FileDown className="ml-2 h-4 w-4" />
-            تصدير إلى إكسل
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div className="relative">
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={importFromExcel}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                disabled={importingFile}
+              />
+              <Button 
+                variant="outline" 
+                size="sm"
+                disabled={importingFile}
+                className="w-full sm:w-auto"
+              >
+                <Upload className="ml-2 h-4 w-4" />
+                {importingFile ? "جاري الاستيراد..." : "استيراد من إكسل"}
+              </Button>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportToExcel}
+              disabled={!treatments || treatments.length === 0}
+              className="w-full sm:w-auto"
+            >
+              <FileDown className="ml-2 h-4 w-4" />
+              تصدير إلى إكسل
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
