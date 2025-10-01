@@ -10,12 +10,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, FileText, Filter, X, MessageCircle, CheckSquare, MoreHorizontal } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Plus, FileText, Filter, X, MessageCircle, CheckSquare, MoreHorizontal, Check, ChevronsUpDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 export default function Appointments() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -26,6 +28,7 @@ export default function Appointments() {
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<any>(null);
+  const [openPatientCombobox, setOpenPatientCombobox] = useState(false);
 
   const isMobile = useIsMobile();
 
@@ -451,18 +454,49 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="patient_id">المريض</Label>
-                <Select value={newAppointment.patient_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, patient_id: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر مريض" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {patients?.map((patient) => (
-                      <SelectItem key={patient.id} value={patient.id}>
-                        {patient.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={openPatientCombobox} onOpenChange={setOpenPatientCombobox}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={openPatientCombobox}
+                      className="w-full justify-between"
+                    >
+                      {newAppointment.patient_id
+                        ? patients?.find((patient) => patient.id === newAppointment.patient_id)?.full_name
+                        : "ابحث عن مريض..."}
+                      <ChevronsUpDown className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0 bg-background" align="start">
+                    <Command>
+                      <CommandInput placeholder="ابحث عن مريض..." className="h-9" />
+                      <CommandList>
+                        <CommandEmpty>لم يتم العثور على مريض</CommandEmpty>
+                        <CommandGroup>
+                          {patients?.map((patient) => (
+                            <CommandItem
+                              key={patient.id}
+                              value={patient.full_name}
+                              onSelect={() => {
+                                setNewAppointment({ ...newAppointment, patient_id: patient.id });
+                                setOpenPatientCombobox(false);
+                              }}
+                            >
+                              {patient.full_name}
+                              <Check
+                                className={cn(
+                                  "mr-auto h-4 w-4",
+                                  newAppointment.patient_id === patient.id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div>
                 <Label htmlFor="doctor_id">الطبيب</Label>
