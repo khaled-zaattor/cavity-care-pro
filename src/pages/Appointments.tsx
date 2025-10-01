@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Plus, FileText, Filter, X, MessageCircle, CheckSquare, MoreHorizontal, Check, ChevronsUpDown } from "lucide-react";
+import { Plus, FileText, Filter, X, MessageCircle, CheckSquare, MoreHorizontal, Check, ChevronsUpDown, Pencil, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +29,7 @@ export default function Appointments() {
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<any>(null);
   const [openPatientCombobox, setOpenPatientCombobox] = useState(false);
+  const [editingAppointment, setEditingAppointment] = useState<any>(null);
 
   const isMobile = useIsMobile();
 
@@ -252,6 +253,41 @@ export default function Appointments() {
     },
   });
 
+  const updateAppointmentMutation = useMutation({
+    mutationFn: async (appointment: typeof newAppointment & { id: string }) => {
+      const { data, error } = await supabase
+        .from("appointments")
+        .update({
+          patient_id: appointment.patient_id,
+          doctor_id: appointment.doctor_id,
+          scheduled_at: appointment.scheduled_at,
+          notes: appointment.notes,
+        })
+        .eq("id", appointment.id)
+        .select();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      setIsDialogOpen(false);
+      setEditingAppointment(null);
+      setNewAppointment({ patient_id: "", doctor_id: "", scheduled_at: "", notes: "" });
+      toast({ title: "نجح", description: "تم تحديث الموعد بنجاح" });
+    },
+  });
+
+  const deleteAppointmentMutation = useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const { error } = await supabase.from("appointments").delete().eq("id", appointmentId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      toast({ title: "نجح", description: "تم حذف الموعد بنجاح" });
+    },
+  });
+
   const recordTreatmentMutation = useMutation({
     mutationFn: async (record: typeof treatmentRecord) => {
       // Insert treatment record
@@ -391,7 +427,11 @@ export default function Appointments() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createAppointmentMutation.mutate(newAppointment);
+    if (editingAppointment) {
+      updateAppointmentMutation.mutate({ ...newAppointment, id: editingAppointment.id });
+    } else {
+      createAppointmentMutation.mutate(newAppointment);
+    }
   };
 
   const handleRecordTreatment = (e: React.FormEvent) => {
@@ -440,7 +480,13 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">المواعيد</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) {
+            setEditingAppointment(null);
+            setNewAppointment({ patient_id: "", doctor_id: "", scheduled_at: "", notes: "" });
+          }
+        }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="ml-2 h-4 w-4" />
@@ -449,7 +495,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>إنشاء موعد جديد</DialogTitle>
+              <DialogTitle>{editingAppointment ? "تعديل الموعد" : "إنشاء موعد جديد"}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -531,8 +577,10 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
                 />
               </div>
-              <Button type="submit" disabled={createAppointmentMutation.isPending}>
-                {createAppointmentMutation.isPending ? "جاري الإنشاء..." : "إنشاء موعد"}
+              <Button type="submit" disabled={createAppointmentMutation.isPending || updateAppointmentMutation.isPending}>
+                {editingAppointment
+                  ? (updateAppointmentMutation.isPending ? "جاري التحديث..." : "تحديث الموعد")
+                  : (createAppointmentMutation.isPending ? "جاري الإنشاء..." : "إنشاء موعد")}
               </Button>
             </form>
           </DialogContent>
@@ -680,6 +728,32 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                             >
                               عرض المريض
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setEditingAppointment(appointment);
+                                setNewAppointment({
+                                  patient_id: appointment.patient_id,
+                                  doctor_id: appointment.doctor_id,
+                                  scheduled_at: appointment.scheduled_at,
+                                  notes: appointment.notes || "",
+                                });
+                                setIsDialogOpen(true);
+                              }}
+                            >
+                              <Pencil className="h-4 w-4 ml-1" />
+                              تعديل
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (confirm("هل أنت متأكد من حذف هذا الموعد؟")) {
+                                  deleteAppointmentMutation.mutate(appointment.id);
+                                }
+                              }}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 ml-1" />
+                              حذف
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       ) : (
@@ -696,6 +770,35 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                               >
                                 <FileText className="h-4 w-4 ml-1" />
                                 تسجيل علاج
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingAppointment(appointment);
+                                  setNewAppointment({
+                                    patient_id: appointment.patient_id,
+                                    doctor_id: appointment.doctor_id,
+                                    scheduled_at: appointment.scheduled_at,
+                                    notes: appointment.notes || "",
+                                  });
+                                  setIsDialogOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4 ml-1" />
+                                تعديل
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm("هل أنت متأكد من حذف هذا الموعد؟")) {
+                                    deleteAppointmentMutation.mutate(appointment.id);
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 ml-1" />
+                                حذف
                               </Button>
                               <Button
                                 variant="outline"
