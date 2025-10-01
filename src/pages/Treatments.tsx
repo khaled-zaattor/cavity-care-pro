@@ -22,6 +22,8 @@ export default function Treatments() {
   const [selectedSubTreatmentId, setSelectedSubTreatmentId] = useState("");
   const [expandedSubTreatments, setExpandedSubTreatments] = useState<string[]>([]);
   const [importingFile, setImportingFile] = useState(false);
+  const [editingSubTreatmentId, setEditingSubTreatmentId] = useState<string | null>(null);
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
 
   const exportToExcel = () => {
     if (!treatments || treatments.length === 0) return;
@@ -245,6 +247,28 @@ export default function Treatments() {
     },
   });
 
+  const updateSubTreatmentMutation = useMutation({
+    mutationFn: async (subTreatment: typeof newSubTreatment & { id: string }) => {
+      const { data, error } = await supabase
+        .from("sub_treatments")
+        .update({
+          name: subTreatment.name,
+          estimated_cost: parseFloat(subTreatment.estimated_cost)
+        })
+        .eq("id", subTreatment.id)
+        .select();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["treatments"] });
+      setIsSubTreatmentDialogOpen(false);
+      setEditingSubTreatmentId(null);
+      setNewSubTreatment({ name: "", estimated_cost: "" });
+      toast({ title: "نجح", description: "تم تحديث العلاج الفرعي بنجاح" });
+    },
+  });
+
   const createStepMutation = useMutation({
     mutationFn: async (step: typeof newStep) => {
       const { data, error } = await supabase
@@ -264,6 +288,30 @@ export default function Treatments() {
       setIsStepDialogOpen(false);
       setNewStep({ step_name: "", step_description: "", step_order: "1", completion_percentage: "0" });
       toast({ title: "نجح", description: "تم إضافة الخطوة بنجاح" });
+    },
+  });
+
+  const updateStepMutation = useMutation({
+    mutationFn: async (step: typeof newStep & { id: string }) => {
+      const { data, error } = await supabase
+        .from("sub_treatment_steps")
+        .update({
+          step_name: step.step_name,
+          step_description: step.step_description,
+          step_order: parseInt(step.step_order),
+          completion_percentage: parseFloat(step.completion_percentage)
+        })
+        .eq("id", step.id)
+        .select();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["treatments"] });
+      setIsStepDialogOpen(false);
+      setEditingStepId(null);
+      setNewStep({ step_name: "", step_description: "", step_order: "1", completion_percentage: "0" });
+      toast({ title: "نجح", description: "تم تحديث الخطوة بنجاح" });
     },
   });
 
@@ -323,12 +371,20 @@ export default function Treatments() {
 
   const handleSubmitSubTreatment = (e: React.FormEvent) => {
     e.preventDefault();
-    createSubTreatmentMutation.mutate(newSubTreatment);
+    if (editingSubTreatmentId) {
+      updateSubTreatmentMutation.mutate({ ...newSubTreatment, id: editingSubTreatmentId });
+    } else {
+      createSubTreatmentMutation.mutate(newSubTreatment);
+    }
   };
 
   const handleSubmitStep = (e: React.FormEvent) => {
     e.preventDefault();
-    createStepMutation.mutate(newStep);
+    if (editingStepId) {
+      updateStepMutation.mutate({ ...newStep, id: editingStepId });
+    } else {
+      createStepMutation.mutate(newStep);
+    }
   };
 
   const toggleSubTreatmentExpansion = (subTreatmentId: string) => {
@@ -484,26 +540,42 @@ export default function Treatments() {
                                     <span className="text-sm text-muted-foreground">{progress}%</span>
                                   </div>
                                 </div>
-                                <div className="flex space-x-1">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => {
-                                      setSelectedSubTreatmentId(subTreatment.id);
-                                      setIsStepDialogOpen(true);
-                                    }}
-                                  >
-                                    <Plus className="h-3 w-3 mr-1" />
-                                    إضافة خطوة
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => deleteSubTreatmentMutation.mutate(subTreatment.id)}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
+                                 <div className="flex space-x-1">
+                                   <Button
+                                     variant="outline"
+                                     size="sm"
+                                     onClick={() => {
+                                       setSelectedSubTreatmentId(subTreatment.id);
+                                       setEditingStepId(null);
+                                       setNewStep({ step_name: "", step_description: "", step_order: "1", completion_percentage: "0" });
+                                       setIsStepDialogOpen(true);
+                                     }}
+                                   >
+                                     <Plus className="h-3 w-3 mr-1" />
+                                     إضافة خطوة
+                                   </Button>
+                                   <Button
+                                     variant="outline"
+                                     size="sm"
+                                     onClick={() => {
+                                       setEditingSubTreatmentId(subTreatment.id);
+                                       setNewSubTreatment({
+                                         name: subTreatment.name,
+                                         estimated_cost: subTreatment.estimated_cost?.toString() || ""
+                                       });
+                                       setIsSubTreatmentDialogOpen(true);
+                                     }}
+                                   >
+                                     <Edit className="h-3 w-3" />
+                                   </Button>
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={() => deleteSubTreatmentMutation.mutate(subTreatment.id)}
+                                   >
+                                     <Trash2 className="h-3 w-3" />
+                                   </Button>
+                                 </div>
                               </div>
 
                               <Collapsible open={isExpanded}>
@@ -526,32 +598,48 @@ export default function Treatments() {
                                                 </p>
                                               )}
                                             </div>
-                                            <div className="flex items-center space-x-2">
-                                              <Input
-                                                type="number"
-                                                min="0"
-                                                max="100"
-                                                value={step.completion_percentage || 0}
-                                                onChange={(e) => {
-                                                  const percentage = parseFloat(e.target.value) || 0;
-                                                  if (percentage >= 0 && percentage <= 100) {
-                                                    updateStepPercentageMutation.mutate({
-                                                      stepId: step.id,
-                                                      percentage
-                                                    });
-                                                  }
-                                                }}
-                                                className="w-16 text-center"
-                                              />
-                                              <span className="text-sm">%</span>
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => deleteStepMutation.mutate(step.id)}
-                                              >
-                                                <Trash2 className="h-3 w-3" />
-                                              </Button>
-                                            </div>
+                                             <div className="flex items-center space-x-2">
+                                               <Input
+                                                 type="number"
+                                                 min="0"
+                                                 max="100"
+                                                 value={step.completion_percentage || 0}
+                                                 onChange={(e) => {
+                                                   const percentage = parseFloat(e.target.value) || 0;
+                                                   if (percentage >= 0 && percentage <= 100) {
+                                                     updateStepPercentageMutation.mutate({
+                                                       stepId: step.id,
+                                                       percentage
+                                                     });
+                                                   }
+                                                 }}
+                                                 className="w-16 text-center"
+                                               />
+                                               <span className="text-sm">%</span>
+                                               <Button
+                                                 variant="outline"
+                                                 size="sm"
+                                                 onClick={() => {
+                                                   setEditingStepId(step.id);
+                                                   setNewStep({
+                                                     step_name: step.step_name,
+                                                     step_description: step.step_description || "",
+                                                     step_order: step.step_order.toString(),
+                                                     completion_percentage: (step.completion_percentage || 0).toString()
+                                                   });
+                                                   setIsStepDialogOpen(true);
+                                                 }}
+                                               >
+                                                 <Edit className="h-3 w-3" />
+                                               </Button>
+                                               <Button
+                                                 variant="ghost"
+                                                 size="sm"
+                                                 onClick={() => deleteStepMutation.mutate(step.id)}
+                                               >
+                                                 <Trash2 className="h-3 w-3" />
+                                               </Button>
+                                             </div>
                                           </div>
                                         ))}
                                     </div>
@@ -573,10 +661,16 @@ export default function Treatments() {
         </CardContent>
       </Card>
 
-      <Dialog open={isSubTreatmentDialogOpen} onOpenChange={setIsSubTreatmentDialogOpen}>
+      <Dialog open={isSubTreatmentDialogOpen} onOpenChange={(open) => {
+        setIsSubTreatmentDialogOpen(open);
+        if (!open) {
+          setEditingSubTreatmentId(null);
+          setNewSubTreatment({ name: "", estimated_cost: "" });
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>إضافة علاج فرعي</DialogTitle>
+            <DialogTitle>{editingSubTreatmentId ? "تعديل علاج فرعي" : "إضافة علاج فرعي"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmitSubTreatment} className="space-y-4">
             <div>
@@ -599,17 +693,27 @@ export default function Treatments() {
                 required
               />
             </div>
-            <Button type="submit" disabled={createSubTreatmentMutation.isPending}>
-              {createSubTreatmentMutation.isPending ? "جاري الإضافة..." : "إضافة علاج فرعي"}
+            <Button type="submit" disabled={createSubTreatmentMutation.isPending || updateSubTreatmentMutation.isPending}>
+              {(createSubTreatmentMutation.isPending || updateSubTreatmentMutation.isPending) 
+                ? "جاري الحفظ..." 
+                : editingSubTreatmentId 
+                  ? "حفظ التعديلات" 
+                  : "إضافة علاج فرعي"}
             </Button>
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isStepDialogOpen} onOpenChange={setIsStepDialogOpen}>
+      <Dialog open={isStepDialogOpen} onOpenChange={(open) => {
+        setIsStepDialogOpen(open);
+        if (!open) {
+          setEditingStepId(null);
+          setNewStep({ step_name: "", step_description: "", step_order: "1", completion_percentage: "0" });
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>إضافة خطوة جديدة</DialogTitle>
+            <DialogTitle>{editingStepId ? "تعديل خطوة" : "إضافة خطوة جديدة"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmitStep} className="space-y-4">
             <div>
@@ -652,8 +756,12 @@ export default function Treatments() {
                 required
               />
             </div>
-            <Button type="submit" disabled={createStepMutation.isPending}>
-              {createStepMutation.isPending ? "جاري الإضافة..." : "إضافة خطوة"}
+            <Button type="submit" disabled={createStepMutation.isPending || updateStepMutation.isPending}>
+              {(createStepMutation.isPending || updateStepMutation.isPending)
+                ? "جاري الحفظ..." 
+                : editingStepId 
+                  ? "حفظ التعديلات" 
+                  : "إضافة خطوة"}
             </Button>
           </form>
         </DialogContent>
