@@ -52,6 +52,7 @@ export default function Appointments() {
     sub_treatment_id: "",
     tooth_numbers: [] as string[],
     actual_cost: "",
+    payment_amount: "",
   });
 
   const { toast } = useToast();
@@ -321,16 +322,28 @@ export default function Appointments() {
         if (stepsError) throw stepsError;
       }
 
+      // Add payment if payment_amount is provided
+      if (record.payment_amount && parseFloat(record.payment_amount) > 0) {
+        const { error: paymentError } = await supabase
+          .from("payments")
+          .insert({
+            appointment_id: selectedAppointment.id,
+            amount: parseFloat(record.payment_amount),
+            paid_at: new Date().toISOString()
+          });
+        if (paymentError) throw paymentError;
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       queryClient.invalidateQueries({ queryKey: ["completed-steps"] });
       setIsRecordDialogOpen(false);
-      setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_numbers: [], actual_cost: "" });
+      setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_numbers: [], actual_cost: "", payment_amount: "" });
       setTeethType("adult");
       setSelectedSteps([]);
-      toast({ title: "Success", description: "Treatment recorded successfully" });
+      toast({ title: "نجح", description: "تم تسجيل العلاج والدفعة بنجاح" });
     },
   });
 
@@ -1129,17 +1142,33 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   )}
                 </div>
               </div>
-              <div>
-                <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
-                <Input
-                  id="actual_cost"
-                  type="number"
-                  step="0.01"
-                  value={treatmentRecord.actual_cost}
-                  onChange={(e) => setTreatmentRecord({ ...treatmentRecord, actual_cost: e.target.value })}
-                  placeholder="أدخل التكلفة الحقيقية"
-                  required
-                />
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
+                  <Input
+                    id="actual_cost"
+                    type="number"
+                    step="0.01"
+                    value={treatmentRecord.actual_cost}
+                    onChange={(e) => setTreatmentRecord({ ...treatmentRecord, actual_cost: e.target.value })}
+                    placeholder="أدخل التكلفة الحقيقية"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="payment_amount">مبلغ الدفعة (اختياري)</Label>
+                  <Input
+                    id="payment_amount"
+                    type="number"
+                    step="0.01"
+                    value={treatmentRecord.payment_amount}
+                    onChange={(e) => setTreatmentRecord({ ...treatmentRecord, payment_amount: e.target.value })}
+                    placeholder="أدخل مبلغ الدفعة إن وجد"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    اترك فارغاً إذا لم يتم الدفع
+                  </p>
+                </div>
               </div>
             </div>
 
