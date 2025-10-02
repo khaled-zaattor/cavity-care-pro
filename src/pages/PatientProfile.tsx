@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Plus, Calendar, CreditCard } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, CreditCard, Edit } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -21,8 +21,10 @@ export default function PatientProfile() {
 
   const [isAppointmentDialogOpen, setIsAppointmentDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [isEditPaymentDialogOpen, setIsEditPaymentDialogOpen] = useState(false);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
   const [activeSection, setActiveSection] = useState("all"); // "all", "appointments", "treatments", "payments"
+  const [editingPayments, setEditingPayments] = useState<{[key: string]: string}>({});
 
   const [newAppointment, setNewAppointment] = useState({
     doctor_id: "",
@@ -212,9 +214,44 @@ export default function PatientProfile() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
       queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["appointment-payments", selectedAppointmentId] });
       setIsPaymentDialogOpen(false);
       setNewPayment({ amount: "" });
       toast({ title: "نجح", description: "تم تسجيل الدفعة بنجاح" });
+    },
+  });
+
+  // Fetch payments for a specific appointment
+  const { data: appointmentPayments } = useQuery({
+    queryKey: ["appointment-payments", selectedAppointmentId],
+    queryFn: async () => {
+      if (!selectedAppointmentId) return [];
+      const { data, error } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("appointment_id", selectedAppointmentId)
+        .order("paid_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedAppointmentId,
+  });
+
+  // Update payment mutation
+  const updatePaymentMutation = useMutation({
+    mutationFn: async ({ paymentId, newAmount }: { paymentId: string; newAmount: number }) => {
+      const { error } = await supabase
+        .from("payments")
+        .update({ amount: newAmount })
+        .eq("id", paymentId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["appointment-payments", selectedAppointmentId] });
+      queryClient.invalidateQueries({ queryKey: ["all-payments", patientId] });
+      toast({ title: "نجح", description: "تم تعديل الدفعة بنجاح" });
     },
   });
 
@@ -451,17 +488,33 @@ export default function PatientProfile() {
                       ))}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedAppointmentId(appointment.id);
-                          setIsPaymentDialogOpen(true);
-                        }}
-                      >
-                        <CreditCard className="h-4 w-4 ml-1" />
-                        إضافة دفعة
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedAppointmentId(appointment.id);
+                            setIsPaymentDialogOpen(true);
+                          }}
+                        >
+                          <CreditCard className="h-4 w-4 ml-1" />
+                          إضافة دفعة
+                        </Button>
+                        {appointment.payments && appointment.payments.length > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedAppointmentId(appointment.id);
+                              setEditingPayments({});
+                              setIsEditPaymentDialogOpen(true);
+                            }}
+                          >
+                            <Edit className="h-4 w-4 ml-1" />
+                            تعديل دفعة
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -492,6 +545,73 @@ export default function PatientProfile() {
               {createPaymentMutation.isPending ? "جاري التسجيل..." : "تسجيل الدفعة"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Payment Dialog */}
+      <Dialog open={isEditPaymentDialogOpen} onOpenChange={setIsEditPaymentDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>تعديل الدفعات</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {appointmentPayments && appointmentPayments.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>تاريخ الدفع</TableHead>
+                    <TableHead>المبلغ الحالي</TableHead>
+                    <TableHead>المبلغ الجديد</TableHead>
+                    <TableHead>إجراء</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {appointmentPayments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell>
+                        {new Date(payment.paid_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="font-semibold">
+                        ${payment.amount.toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="أدخل المبلغ الجديد"
+                          value={editingPayments[payment.id] || ""}
+                          onChange={(e) => setEditingPayments({
+                            ...editingPayments,
+                            [payment.id]: e.target.value
+                          })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          disabled={!editingPayments[payment.id] || updatePaymentMutation.isPending}
+                          onClick={() => {
+                            if (editingPayments[payment.id]) {
+                              updatePaymentMutation.mutate({
+                                paymentId: payment.id,
+                                newAmount: parseFloat(editingPayments[payment.id])
+                              });
+                            }
+                          }}
+                        >
+                          حفظ
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>لا توجد دفعات لهذا الموعد</p>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
