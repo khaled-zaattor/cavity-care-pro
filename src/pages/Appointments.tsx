@@ -750,10 +750,12 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                             <DropdownMenuItem
                               onClick={() => {
                                 setEditingAppointment(appointment);
+                                const scheduledDate = new Date(appointment.scheduled_at);
+                                const formattedDate = scheduledDate.toISOString().slice(0, 16);
                                 setNewAppointment({
                                   patient_id: appointment.patient_id,
                                   doctor_id: appointment.doctor_id,
-                                  scheduled_at: appointment.scheduled_at,
+                                  scheduled_at: formattedDate,
                                   notes: appointment.notes || "",
                                 });
                                 setIsDialogOpen(true);
@@ -790,15 +792,17 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                                 <FileText className="h-4 w-4 ml-1" />
                                 تسجيل علاج
                               </Button>
-                              <Button
+                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => {
                                   setEditingAppointment(appointment);
+                                  const scheduledDate = new Date(appointment.scheduled_at);
+                                  const formattedDate = scheduledDate.toISOString().slice(0, 16);
                                   setNewAppointment({
                                     patient_id: appointment.patient_id,
                                     doctor_id: appointment.doctor_id,
-                                    scheduled_at: appointment.scheduled_at,
+                                    scheduled_at: formattedDate,
                                     notes: appointment.notes || "",
                                   });
                                   setIsDialogOpen(true);
