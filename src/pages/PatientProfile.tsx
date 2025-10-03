@@ -572,18 +572,21 @@ export default function PatientProfile() {
                         {new Date(payment.paid_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="font-semibold">
-                        ${payment.amount.toFixed(2)}
+                        {Math.round(payment.amount).toLocaleString('en-US')}
                       </TableCell>
                       <TableCell>
                         <Input
-                          type="number"
-                          step="0.01"
+                          type="text"
                           placeholder="أدخل المبلغ الجديد"
                           value={editingPayments[payment.id] || ""}
-                          onChange={(e) => setEditingPayments({
-                            ...editingPayments,
-                            [payment.id]: e.target.value
-                          })}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^\d]/g, '');
+                            const formatted = value ? parseInt(value).toLocaleString('en-US') : '';
+                            setEditingPayments({
+                              ...editingPayments,
+                              [payment.id]: formatted
+                            });
+                          }}
                         />
                       </TableCell>
                       <TableCell>
@@ -592,9 +595,10 @@ export default function PatientProfile() {
                           disabled={!editingPayments[payment.id] || updatePaymentMutation.isPending}
                           onClick={() => {
                             if (editingPayments[payment.id]) {
+                              const numericValue = parseInt(editingPayments[payment.id].replace(/,/g, ''));
                               updatePaymentMutation.mutate({
                                 paymentId: payment.id,
-                                newAmount: parseFloat(editingPayments[payment.id])
+                                newAmount: numericValue
                               });
                             }
                           }}
