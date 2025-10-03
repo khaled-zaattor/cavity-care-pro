@@ -483,7 +483,7 @@ export default function PatientProfile() {
                     <TableCell>
                       {appointment.payments?.map((payment, index) => (
                         <div key={index} className="text-sm">
-                          ${payment.amount} on {new Date(payment.paid_at).toLocaleDateString()}
+                          {Math.round(payment.amount).toLocaleString('en-US')} on {new Date(payment.paid_at).toLocaleDateString()}
                         </div>
                       ))}
                     </TableCell>
@@ -649,7 +649,7 @@ export default function PatientProfile() {
                       <TableCell>{record.treatments?.name}</TableCell>
                       <TableCell>{record.sub_treatments?.name}</TableCell>
                       <TableCell>{record.tooth_number}</TableCell>
-                      <TableCell>${record.actual_cost?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell>{Math.round(record.actual_cost || 0).toLocaleString('en-US')}</TableCell>
                       <TableCell>
                         <span className={`px-2 py-1 rounded text-xs ${
                           record.is_completed 
@@ -700,19 +700,19 @@ export default function PatientProfile() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                     <div>
                       <div className="text-2xl font-bold text-green-600">
-                        ${allPayments.reduce((sum, payment) => sum + Number(payment.amount), 0).toFixed(2)}
+                        {Math.round(allPayments.reduce((sum, payment) => sum + Number(payment.amount), 0)).toLocaleString('en-US')}
                       </div>
                       <p className="text-sm text-muted-foreground">إجمالي المدفوعات</p>
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-blue-600">
-                        ${(allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost || 0), 0) || 0).toFixed(2)}
+                        {Math.round(allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost || 0), 0) || 0).toLocaleString('en-US')}
                       </div>
                       <p className="text-sm text-muted-foreground">إجمالي تكلفة العلاجات</p>
                     </div>
                     <div>
                       <div className={`text-2xl font-bold ${balance && balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        ${Math.abs(balance || 0).toFixed(2)}
+                        {Math.round(Math.abs(balance || 0)).toLocaleString('en-US')}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {balance && balance > 0 ? 'المبلغ المستحق' : 'رصيد زائد'}
@@ -738,7 +738,7 @@ export default function PatientProfile() {
                           {new Date(payment.paid_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="font-semibold text-green-600">
-                          ${payment.amount.toFixed(2)}
+                          {Math.round(payment.amount).toLocaleString('en-US')}
                         </TableCell>
                         <TableCell>
                           {new Date(payment.appointments?.scheduled_at).toLocaleDateString()}

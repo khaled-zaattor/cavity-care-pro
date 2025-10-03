@@ -532,7 +532,7 @@ export default function Treatments() {
                                   <div>
                                     <span className="font-medium">{subTreatment.name}</span>
                                     {subTreatment.estimated_cost && (
-                                      <p className="text-sm font-bold text-primary">${subTreatment.estimated_cost}</p>
+                                      <p className="text-sm font-bold text-primary">{Math.round(subTreatment.estimated_cost).toLocaleString('en-US')}</p>
                                     )}
                                   </div>
                                   <div className="flex items-center space-x-2">
