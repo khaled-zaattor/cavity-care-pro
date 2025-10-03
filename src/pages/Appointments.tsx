@@ -458,6 +458,25 @@ export default function Appointments() {
     recordTreatmentMutation.mutate(treatmentRecord);
   };
 
+  // Helper functions for number formatting
+  const formatNumberWithCommas = (value: string) => {
+    // Remove existing commas and non-numeric characters except decimal point
+    const cleanValue = value.replace(/[^\d.]/g, '');
+    
+    // Split by decimal point
+    const parts = cleanValue.split('.');
+    
+    // Add commas to the integer part
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    
+    // Join back with decimal part if exists
+    return parts.join('.');
+  };
+
+  const removeCommas = (value: string) => {
+    return value.replace(/,/g, '');
+  };
+
   const sendWhatsAppMessage = (appointment: any) => {
     if (!appointment.patients?.phone_number) {
       toast({
@@ -905,7 +924,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     setTreatmentRecord({
                       ...treatmentRecord,
                       sub_treatment_id: value,
-                      actual_cost: selectedSubTreatment?.estimated_cost?.toString() || ""
+                      actual_cost: selectedSubTreatment?.estimated_cost?.toString().replace(/,/g, '') || ""
                     });
                   }}
                 >
@@ -915,7 +934,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   <SelectContent>
                     {subTreatments?.map((subTreatment) => (
                       <SelectItem key={subTreatment.id} value={subTreatment.id}>
-                        {subTreatment.name} - ${subTreatment.estimated_cost}
+                        {subTreatment.name} - {formatNumberWithCommas(subTreatment.estimated_cost?.toString() || '0')}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1151,10 +1170,12 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
                   <Input
                     id="actual_cost"
-                    type="number"
-                    step="0.01"
-                    value={treatmentRecord.actual_cost}
-                    onChange={(e) => setTreatmentRecord({ ...treatmentRecord, actual_cost: e.target.value })}
+                    type="text"
+                    value={treatmentRecord.actual_cost ? formatNumberWithCommas(treatmentRecord.actual_cost) : ''}
+                    onChange={(e) => {
+                      const rawValue = removeCommas(e.target.value);
+                      setTreatmentRecord({ ...treatmentRecord, actual_cost: rawValue });
+                    }}
                     placeholder="أدخل التكلفة الحقيقية"
                     required
                   />
@@ -1163,10 +1184,12 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   <Label htmlFor="payment_amount">مبلغ الدفعة (اختياري)</Label>
                   <Input
                     id="payment_amount"
-                    type="number"
-                    step="0.01"
-                    value={treatmentRecord.payment_amount}
-                    onChange={(e) => setTreatmentRecord({ ...treatmentRecord, payment_amount: e.target.value })}
+                    type="text"
+                    value={treatmentRecord.payment_amount ? formatNumberWithCommas(treatmentRecord.payment_amount) : ''}
+                    onChange={(e) => {
+                      const rawValue = removeCommas(e.target.value);
+                      setTreatmentRecord({ ...treatmentRecord, payment_amount: rawValue });
+                    }}
                     placeholder="أدخل مبلغ الدفعة إن وجد"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
