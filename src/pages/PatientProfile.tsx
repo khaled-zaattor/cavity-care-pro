@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Plus, Calendar, CreditCard, Edit } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, CreditCard, Edit, Download } from "lucide-react";
+import * as XLSX from 'xlsx';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -265,12 +266,91 @@ export default function PatientProfile() {
     createPaymentMutation.mutate(newPayment);
   };
 
+  const handleExportPatientData = () => {
+    // Prepare appointments data
+    const appointmentsData = appointments?.map(apt => ({
+      'التاريخ': new Date(apt.scheduled_at).toLocaleDateString('ar-EG'),
+      'الوقت': new Date(apt.scheduled_at).toLocaleTimeString('ar-EG'),
+      'الطبيب': apt.doctors?.full_name || '',
+      'الحالة': apt.status === 'Completed' ? 'مكتمل' : apt.status === 'Scheduled' ? 'مجدول' : 'ملغي',
+      'الملاحظات': apt.notes || '-'
+    })) || [];
+
+    // Prepare treatments data
+    const treatmentsData = allTreatmentRecords?.map(record => ({
+      'التاريخ': new Date((record.appointments as any)?.scheduled_at).toLocaleDateString('ar-EG'),
+      'الطبيب': (record.appointments as any)?.doctors?.full_name || '',
+      'العلاج': record.treatments?.name || '',
+      'الإجراء الفرعي': record.sub_treatments?.name || '',
+      'السن': record.tooth_number,
+      'التكلفة الفعلية': Math.round(record.actual_cost || 0),
+      'الحالة': record.is_completed ? 'مكتمل' : 'غير مكتمل'
+    })) || [];
+
+    // Prepare payments data
+    const paymentsData = allPayments?.map(payment => ({
+      'التاريخ': new Date(payment.paid_at).toLocaleDateString('ar-EG'),
+      'المبلغ': Math.round(payment.amount),
+      'الموعد': new Date((payment.appointments as any)?.scheduled_at).toLocaleDateString('ar-EG'),
+      'الطبيب': (payment.appointments as any)?.doctors?.full_name || ''
+    })) || [];
+
+    // Calculate totals
+    const totalCost = allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost || 0), 0) || 0;
+    const totalPaid = allPayments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+    const remainingBalance = totalCost - totalPaid;
+
+    const summaryData = [{
+      'إجمالي التكلفة': Math.round(totalCost),
+      'إجمالي المدفوع': Math.round(totalPaid),
+      'الرصيد المتبقي': Math.round(remainingBalance)
+    }];
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Add patient info sheet
+    const patientInfo = [{
+      'الاسم': patient.full_name,
+      'تاريخ الميلاد': new Date(patient.date_of_birth).toLocaleDateString('ar-EG'),
+      'الهاتف': patient.phone_number,
+      'جهة الاتصال': patient.contact || '-',
+      'الملاحظات الطبية': patient.medical_notes || '-'
+    }];
+    const wsPatient = XLSX.utils.json_to_sheet(patientInfo);
+    XLSX.utils.book_append_sheet(wb, wsPatient, 'معلومات المريض');
+
+    // Add summary sheet
+    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'الملخص المالي');
+
+    // Add appointments sheet
+    const wsAppointments = XLSX.utils.json_to_sheet(appointmentsData);
+    XLSX.utils.book_append_sheet(wb, wsAppointments, 'المواعيد');
+
+    // Add treatments sheet
+    const wsTreatments = XLSX.utils.json_to_sheet(treatmentsData);
+    XLSX.utils.book_append_sheet(wb, wsTreatments, 'العلاجات');
+
+    // Add payments sheet
+    const wsPayments = XLSX.utils.json_to_sheet(paymentsData);
+    XLSX.utils.book_append_sheet(wb, wsPayments, 'المدفوعات');
+
+    // Generate file
+    XLSX.writeFile(wb, `${patient.full_name} - ملف المريض.xlsx`);
+    
+    toast({ 
+      title: "تم التصدير بنجاح", 
+      description: "تم تصدير بيانات المريض إلى ملف Excel" 
+    });
+  };
+
   if (!patient) return <div>جاري تحميل بيانات المريض...</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-4 space-x-reverse">
           <Button variant="outline" onClick={() => navigate("/patients")}>
             <ArrowLeft className="ml-2 h-4 w-4" />
             العودة للمرضى
@@ -280,6 +360,14 @@ export default function PatientProfile() {
         
         {/* Secondary Navigation Menu - Inline */}
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleExportPatientData}
+          >
+            <Download className="ml-2 h-4 w-4" />
+            تصدير ملف المريض
+          </Button>
           <Button
             variant={activeSection === "all" ? "default" : "outline"}
             onClick={() => setActiveSection("all")}
@@ -453,6 +541,7 @@ export default function PatientProfile() {
                   <TableHead>الحالة</TableHead>
                   <TableHead>العلاجات</TableHead>
                   <TableHead>المدفوعات</TableHead>
+                  <TableHead>الملاحظات</TableHead>
                   <TableHead>الإجراءات</TableHead>
                 </TableRow>
               </TableHeader>
@@ -486,6 +575,11 @@ export default function PatientProfile() {
                           {Math.round(payment.amount).toLocaleString('en-US')} on {new Date(payment.paid_at).toLocaleDateString()}
                         </div>
                       ))}
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">
+                        {appointment.notes || '-'}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
