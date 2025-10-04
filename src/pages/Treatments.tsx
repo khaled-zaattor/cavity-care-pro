@@ -233,7 +233,7 @@ export default function Treatments() {
         .insert([{
           ...subTreatment,
           treatment_id: selectedTreatmentId,
-          estimated_cost: parseFloat(subTreatment.estimated_cost)
+          estimated_cost: parseInt(subTreatment.estimated_cost)
         }])
         .select();
       if (error) throw error;
@@ -253,7 +253,7 @@ export default function Treatments() {
         .from("sub_treatments")
         .update({
           name: subTreatment.name,
-          estimated_cost: parseFloat(subTreatment.estimated_cost)
+          estimated_cost: parseInt(subTreatment.estimated_cost)
         })
         .eq("id", subTreatment.id)
         .select();
@@ -554,20 +554,20 @@ export default function Treatments() {
                                      <Plus className="h-3 w-3 mr-1" />
                                      إضافة خطوة
                                    </Button>
-                                   <Button
-                                     variant="outline"
-                                     size="sm"
-                                     onClick={() => {
-                                       setEditingSubTreatmentId(subTreatment.id);
-                                       setNewSubTreatment({
-                                         name: subTreatment.name,
-                                         estimated_cost: subTreatment.estimated_cost?.toString() || ""
-                                       });
-                                       setIsSubTreatmentDialogOpen(true);
-                                     }}
-                                   >
-                                     <Edit className="h-3 w-3" />
-                                   </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        setEditingSubTreatmentId(subTreatment.id);
+                                        setNewSubTreatment({
+                                          name: subTreatment.name,
+                                          estimated_cost: Math.round(subTreatment.estimated_cost || 0).toString()
+                                        });
+                                        setIsSubTreatmentDialogOpen(true);
+                                      }}
+                                    >
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
                                    <Button
                                      variant="ghost"
                                      size="sm"
@@ -686,10 +686,14 @@ export default function Treatments() {
               <Label htmlFor="sub_estimated_cost">التكلفة المقدرة ($)</Label>
               <Input
                 id="sub_estimated_cost"
-                type="number"
-                step="0.01"
-                value={newSubTreatment.estimated_cost}
-                onChange={(e) => setNewSubTreatment({ ...newSubTreatment, estimated_cost: e.target.value })}
+                type="text"
+                value={newSubTreatment.estimated_cost ? Math.round(Number(newSubTreatment.estimated_cost)).toLocaleString('en-US') : ''}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/,/g, '');
+                  if (value === '' || /^\d+$/.test(value)) {
+                    setNewSubTreatment({ ...newSubTreatment, estimated_cost: value });
+                  }
+                }}
                 required
               />
             </div>
