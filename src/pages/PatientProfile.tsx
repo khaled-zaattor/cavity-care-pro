@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Plus, Calendar, CreditCard, Edit, Download } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, CreditCard, Edit, Download, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import * as XLSX from 'xlsx';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,6 +27,8 @@ export default function PatientProfile() {
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
   const [activeSection, setActiveSection] = useState("all"); // "all", "appointments", "treatments", "payments"
   const [editingPayments, setEditingPayments] = useState<{[key: string]: string}>({});
+  const [isDeleteTreatmentDialogOpen, setIsDeleteTreatmentDialogOpen] = useState(false);
+  const [treatmentToDelete, setTreatmentToDelete] = useState<string | null>(null);
 
   const [newAppointment, setNewAppointment] = useState({
     doctor_id: "",
@@ -74,6 +77,31 @@ export default function PatientProfile() {
       queryClient.invalidateQueries({ queryKey: ["unfinished-sub-treatments", patientId] });
       queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
       toast({ title: "تم", description: "تم وضع علامة مكتمل" });
+    },
+  });
+
+  // Mutation to delete treatment record
+  const deleteTreatmentMutation = useMutation({
+    mutationFn: async (recordId: string) => {
+      const { error } = await supabase
+        .from("treatment_records")
+        .delete()
+        .eq("id", recordId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-treatment-records", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
+      setIsDeleteTreatmentDialogOpen(false);
+      setTreatmentToDelete(null);
+      toast({ title: "تم الحذف", description: "تم حذف العلاج بنجاح" });
+    },
+    onError: () => {
+      toast({ 
+        title: "خطأ", 
+        description: "حدث خطأ أثناء حذف العلاج",
+        variant: "destructive"
+      });
     },
   });
 
@@ -761,16 +789,28 @@ export default function PatientProfile() {
                         {record.appointments?.doctors?.full_name || '-'}
                       </TableCell>
                       <TableCell>
-                        {!record.is_completed && (
+                        <div className="flex gap-2">
+                          {!record.is_completed && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => markCompleteMutation.mutate(record.id)}
+                              disabled={markCompleteMutation.isPending}
+                            >
+                              تمييز كمكتمل
+                            </Button>
+                          )}
                           <Button
-                            variant="outline"
+                            variant="destructive"
                             size="sm"
-                            onClick={() => markCompleteMutation.mutate(record.id)}
-                            disabled={markCompleteMutation.isPending}
+                            onClick={() => {
+                              setTreatmentToDelete(record.id);
+                              setIsDeleteTreatmentDialogOpen(true);
+                            }}
                           >
-                            تمييز كمكتمل
+                            <Trash2 className="h-4 w-4" />
                           </Button>
-                        )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -784,6 +824,31 @@ export default function PatientProfile() {
           </CardContent>
         </Card>
       )}
+
+      {/* Delete Treatment Confirmation Dialog */}
+      <AlertDialog open={isDeleteTreatmentDialogOpen} onOpenChange={setIsDeleteTreatmentDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+            <AlertDialogDescription>
+              هل أنت متأكد من حذف هذا العلاج؟ لا يمكن التراجع عن هذا الإجراء.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (treatmentToDelete) {
+                  deleteTreatmentMutation.mutate(treatmentToDelete);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              حذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* All Payments Section */}
       {(activeSection === "all" || activeSection === "payments") && (
