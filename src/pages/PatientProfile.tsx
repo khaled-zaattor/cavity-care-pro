@@ -534,10 +534,14 @@ export default function PatientProfile() {
               <Label htmlFor="amount">مبلغ الدفعة</Label>
               <Input
                 id="amount"
-                type="number"
-                step="0.01"
-                value={newPayment.amount}
-                onChange={(e) => setNewPayment({ ...newPayment, amount: e.target.value })}
+                type="text"
+                value={newPayment.amount ? Math.round(Number(newPayment.amount)).toLocaleString('en-US') : ''}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/,/g, '');
+                  if (value === '' || /^\d+$/.test(value)) {
+                    setNewPayment({ ...newPayment, amount: value });
+                  }
+                }}
                 required
               />
             </div>
