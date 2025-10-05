@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { z } from "zod";
 
 export default function Appointments() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -53,11 +54,22 @@ export default function Appointments() {
     tooth_numbers: [] as string[],
     actual_cost: "",
     payment_amount: "",
+    notes: "",
   });
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  // Load existing notes from appointment when dialog opens
+  useEffect(() => {
+    if (isRecordDialogOpen && selectedAppointment) {
+      setTreatmentRecord(prev => ({
+        ...prev,
+        notes: selectedAppointment.notes || ""
+      }));
+    }
+  }, [isRecordDialogOpen, selectedAppointment]);
 
   const { data: appointments, isLoading } = useQuery({
     queryKey: ["appointments", filterDoctor, filterDate, filterStatus],
@@ -307,6 +319,15 @@ export default function Appointments() {
         .select();
       if (error) throw error;
 
+      // Update appointment notes
+      if (record.notes.trim()) {
+        const { error: notesError } = await supabase
+          .from("appointments")
+          .update({ notes: record.notes })
+          .eq("id", selectedAppointment.id);
+        if (notesError) throw notesError;
+      }
+
       // Save completed treatment steps if any are selected
       if (selectedSteps.length > 0) {
         const stepData = selectedSteps.map(stepId => ({
@@ -340,7 +361,7 @@ export default function Appointments() {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       queryClient.invalidateQueries({ queryKey: ["completed-steps"] });
       setIsRecordDialogOpen(false);
-      setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_numbers: [], actual_cost: "", payment_amount: "" });
+      setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_numbers: [], actual_cost: "", payment_amount: "", notes: "" });
       setTeethType("adult");
       setSelectedSteps([]);
       toast({ title: "نجح", description: "تم تسجيل العلاج والدفعة بنجاح" });
@@ -453,8 +474,28 @@ export default function Appointments() {
     }
   };
 
+  // Validation schema for treatment notes
+  const treatmentNotesSchema = z.object({
+    notes: z.string().max(2000, { message: "الملاحظات يجب أن لا تتجاوز 2000 حرف" })
+  });
+
   const handleRecordTreatment = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate notes
+    try {
+      treatmentNotesSchema.parse({ notes: treatmentRecord.notes });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast({ 
+          title: "خطأ في التحقق", 
+          description: error.errors[0].message,
+          variant: "destructive" 
+        });
+        return;
+      }
+    }
+    
     recordTreatmentMutation.mutate(treatmentRecord);
   };
 
@@ -1197,6 +1238,24 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* Notes Section */}
+            <div>
+              <Label htmlFor="treatment_notes">الملاحظات</Label>
+              <Textarea
+                id="treatment_notes"
+                value={treatmentRecord.notes}
+                onChange={(e) => setTreatmentRecord({ ...treatmentRecord, notes: e.target.value })}
+                placeholder="أضف ملاحظات حول العلاج..."
+                rows={3}
+                className="resize-none"
+              />
+              {selectedAppointment?.notes && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  الملاحظة السابقة: {selectedAppointment.notes}
+                </p>
+              )}
             </div>
 
             {/* Treatment Steps Section */}
