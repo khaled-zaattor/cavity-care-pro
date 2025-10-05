@@ -18,6 +18,7 @@ export const Layout = ({ children }: LayoutProps) => {
     { path: "/patients", label: "المرضى", icon: Users },
     { path: "/appointments", label: "المواعيد", icon: Calendar },
     { path: "/treatments", label: "العلاجات", icon: FileText },
+    { path: "/activity-logs", label: "سجل النشاطات", icon: FileText },
   ];
 
   const currentPage = navItems.find(item => item.path === location.pathname)?.label || "لوحة التحكم";
