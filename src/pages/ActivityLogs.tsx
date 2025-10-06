@@ -1,8 +1,9 @@
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, Shield } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import {
@@ -27,6 +28,29 @@ interface ActivityLog {
 }
 
 export default function ActivityLogs() {
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    checkUserRole();
+  }, []);
+
+  const checkUserRole = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      setUserRole(roleData?.role || null);
+    } catch (error) {
+      console.error('Error checking user role:', error);
+    }
+  };
+
   const { data: logs, isLoading } = useQuery({
     queryKey: ["activity-logs"],
     queryFn: async () => {
@@ -66,10 +90,28 @@ export default function ActivityLogs() {
     toast.success("تم تصدير السجل بنجاح");
   };
 
-  if (isLoading) {
+  if (isLoading || userRole === null) {
     return (
       <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">جاري التحميل...</p>
+      </div>
+    );
+  }
+
+  if (userRole !== 'super_admin') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+              <Shield className="h-6 w-6 text-destructive" />
+            </div>
+            <CardTitle className="text-2xl">غير مصرح</CardTitle>
+            <CardDescription>
+              هذه الصفحة مخصصة للمديرين العامين فقط
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
     );
   }

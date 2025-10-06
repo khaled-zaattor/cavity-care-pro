@@ -1,5 +1,7 @@
+import { useState, useEffect } from "react";
 import { Users, Calendar, FileText, Stethoscope, UserCheck, Settings, FileSpreadsheet } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 import {
   Sidebar,
@@ -15,19 +17,41 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { path: "/", label: "لوحة التحكم", icon: Stethoscope },
-  { path: "/patients", label: "المرضى", icon: Users },
-  { path: "/doctors", label: "الأطباء", icon: UserCheck },
-  { path: "/appointments", label: "المواعيد", icon: Calendar },
-  { path: "/treatments", label: "العلاجات", icon: FileText },
-  { path: "/activity-logs", label: "سجل النشاطات", icon: FileSpreadsheet },
-  { path: "/admin", label: "إدارة النظام", icon: Settings },
+  { path: "/", label: "لوحة التحكم", icon: Stethoscope, adminOnly: false },
+  { path: "/patients", label: "المرضى", icon: Users, adminOnly: false },
+  { path: "/doctors", label: "الأطباء", icon: UserCheck, adminOnly: false },
+  { path: "/appointments", label: "المواعيد", icon: Calendar, adminOnly: false },
+  { path: "/treatments", label: "العلاجات", icon: FileText, adminOnly: false },
+  { path: "/activity-logs", label: "سجل النشاطات", icon: FileSpreadsheet, adminOnly: true },
+  { path: "/admin", label: "إدارة النظام", icon: Settings, adminOnly: true },
 ];
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
   const currentPath = location.pathname;
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    checkUserRole();
+  }, []);
+
+  const checkUserRole = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      setUserRole(roleData?.role || null);
+    } catch (error) {
+      console.error('Error checking user role:', error);
+    }
+  };
 
   const isActive = (path: string) => currentPath === path;
   const isCollapsed = state === "collapsed";
@@ -55,6 +79,11 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
+                // Hide admin-only pages for non-super_admin users
+                if (item.adminOnly && userRole !== 'super_admin') {
+                  return null;
+                }
+                
                 const Icon = item.icon;
                 const active = isActive(item.path);
                 return (
