@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 
@@ -171,6 +172,7 @@ export default function Treatments() {
   const [newSubTreatment, setNewSubTreatment] = useState({
     name: "",
     estimated_cost: "",
+    tooth_association: "not_related" as "not_related" | "single_tooth" | "multiple_teeth",
   });
 
   const [newStep, setNewStep] = useState({
@@ -194,6 +196,7 @@ export default function Treatments() {
             id, 
             name,
             estimated_cost,
+            tooth_association,
             sub_treatment_steps (
               id,
               step_name,
@@ -231,9 +234,10 @@ export default function Treatments() {
       const { data, error } = await supabase
         .from("sub_treatments")
         .insert([{
-          ...subTreatment,
+          name: subTreatment.name,
           treatment_id: selectedTreatmentId,
-          estimated_cost: parseInt(subTreatment.estimated_cost)
+          estimated_cost: parseInt(subTreatment.estimated_cost),
+          tooth_association: subTreatment.tooth_association
         }])
         .select();
       if (error) throw error;
@@ -242,7 +246,7 @@ export default function Treatments() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       setIsSubTreatmentDialogOpen(false);
-      setNewSubTreatment({ name: "", estimated_cost: "" });
+      setNewSubTreatment({ name: "", estimated_cost: "", tooth_association: "not_related" });
       toast({ title: "نجح", description: "تم إضافة العلاج الفرعي بنجاح" });
     },
   });
@@ -253,7 +257,8 @@ export default function Treatments() {
         .from("sub_treatments")
         .update({
           name: subTreatment.name,
-          estimated_cost: parseInt(subTreatment.estimated_cost)
+          estimated_cost: parseInt(subTreatment.estimated_cost),
+          tooth_association: subTreatment.tooth_association
         })
         .eq("id", subTreatment.id)
         .select();
@@ -264,7 +269,7 @@ export default function Treatments() {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       setIsSubTreatmentDialogOpen(false);
       setEditingSubTreatmentId(null);
-      setNewSubTreatment({ name: "", estimated_cost: "" });
+      setNewSubTreatment({ name: "", estimated_cost: "", tooth_association: "not_related" });
       toast({ title: "نجح", description: "تم تحديث العلاج الفرعي بنجاح" });
     },
   });
@@ -554,20 +559,21 @@ export default function Treatments() {
                                      <Plus className="h-3 w-3 mr-1" />
                                      إضافة خطوة
                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => {
-                                        setEditingSubTreatmentId(subTreatment.id);
-                                        setNewSubTreatment({
-                                          name: subTreatment.name,
-                                          estimated_cost: Math.round(subTreatment.estimated_cost || 0).toString()
-                                        });
-                                        setIsSubTreatmentDialogOpen(true);
-                                      }}
-                                    >
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
+                                     <Button
+                                       variant="outline"
+                                       size="sm"
+                                       onClick={() => {
+                                         setEditingSubTreatmentId(subTreatment.id);
+                                         setNewSubTreatment({
+                                           name: subTreatment.name,
+                                           estimated_cost: Math.round(subTreatment.estimated_cost || 0).toString(),
+                                           tooth_association: (subTreatment as any).tooth_association || "not_related"
+                                         });
+                                         setIsSubTreatmentDialogOpen(true);
+                                       }}
+                                     >
+                                       <Edit className="h-3 w-3" />
+                                     </Button>
                                    <Button
                                      variant="ghost"
                                      size="sm"
@@ -665,7 +671,7 @@ export default function Treatments() {
         setIsSubTreatmentDialogOpen(open);
         if (!open) {
           setEditingSubTreatmentId(null);
-          setNewSubTreatment({ name: "", estimated_cost: "" });
+          setNewSubTreatment({ name: "", estimated_cost: "", tooth_association: "not_related" });
         }
       }}>
         <DialogContent>
@@ -696,6 +702,30 @@ export default function Treatments() {
                 }}
                 required
               />
+            </div>
+            <div>
+              <Label>الارتباط بالأسنان</Label>
+              <RadioGroup 
+                value={newSubTreatment.tooth_association} 
+                onValueChange={(value) => setNewSubTreatment({ 
+                  ...newSubTreatment, 
+                  tooth_association: value as "not_related" | "single_tooth" | "multiple_teeth" 
+                })}
+                className="flex flex-col space-y-2 mt-2"
+              >
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <RadioGroupItem value="not_related" id="not_related" />
+                  <Label htmlFor="not_related" className="cursor-pointer font-normal">غير مرتبط بأسنان</Label>
+                </div>
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <RadioGroupItem value="single_tooth" id="single_tooth" />
+                  <Label htmlFor="single_tooth" className="cursor-pointer font-normal">مرتبط بسن واحد</Label>
+                </div>
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <RadioGroupItem value="multiple_teeth" id="multiple_teeth" />
+                  <Label htmlFor="multiple_teeth" className="cursor-pointer font-normal">مرتبط بعدة أسنان</Label>
+                </div>
+              </RadioGroup>
             </div>
             <Button type="submit" disabled={createSubTreatmentMutation.isPending || updateSubTreatmentMutation.isPending}>
               {(createSubTreatmentMutation.isPending || updateSubTreatmentMutation.isPending) 

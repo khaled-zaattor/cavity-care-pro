@@ -324,6 +324,7 @@ export type Database = {
           estimated_cost: number | null
           id: string
           name: string
+          tooth_association: Database["public"]["Enums"]["tooth_association_type"]
           treatment_id: string
           updated_at: string
         }
@@ -332,6 +333,7 @@ export type Database = {
           estimated_cost?: number | null
           id?: string
           name: string
+          tooth_association?: Database["public"]["Enums"]["tooth_association_type"]
           treatment_id: string
           updated_at?: string
         }
@@ -340,6 +342,7 @@ export type Database = {
           estimated_cost?: number | null
           id?: string
           name?: string
+          tooth_association?: Database["public"]["Enums"]["tooth_association_type"]
           treatment_id?: string
           updated_at?: string
         }
@@ -559,6 +562,7 @@ export type Database = {
     Enums: {
       app_role: "super_admin" | "doctor" | "dentist_assistant" | "receptionist"
       appointment_status: "Scheduled" | "Completed" | "Cancelled"
+      tooth_association_type: "not_related" | "single_tooth" | "multiple_teeth"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -688,6 +692,7 @@ export const Constants = {
     Enums: {
       app_role: ["super_admin", "doctor", "dentist_assistant", "receptionist"],
       appointment_status: ["Scheduled", "Completed", "Cancelled"],
+      tooth_association_type: ["not_related", "single_tooth", "multiple_teeth"],
     },
   },
 } as const
