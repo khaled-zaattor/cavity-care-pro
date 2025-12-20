@@ -278,15 +278,31 @@ export default function Patients() {
   const { data: patients, isLoading, error } = useQuery({
     queryKey: ["patients", searchTerm],
     queryFn: async () => {
-      let query = supabase.from("patients").select("*");
-      
-      if (searchTerm) {
-        query = query.ilike("full_name", `%${searchTerm}%`);
+      // جلب جميع المرضى على دفعات لتجاوز حد 1000 صف
+      const pageSize = 1000;
+      let offset = 0;
+      let allPatients: Patient[] = [];
+
+      while (true) {
+        let query = supabase.from("patients").select("*");
+        
+        if (searchTerm) {
+          query = query.ilike("full_name", `%${searchTerm}%`);
+        }
+        
+        const { data, error } = await query
+          .order("full_name")
+          .range(offset, offset + pageSize - 1);
+        
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        
+        allPatients = allPatients.concat(data as Patient[]);
+        if (data.length < pageSize) break;
+        offset += pageSize;
       }
-      
-      const { data, error } = await query.order("full_name");
-      if (error) throw error;
-      return data as Patient[];
+
+      return allPatients;
     },
     retry: 1,
     staleTime: 0,
