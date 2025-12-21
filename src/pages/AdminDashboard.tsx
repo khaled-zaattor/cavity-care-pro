@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
-import { Shield, Lock, Users, Settings, BarChart3 } from "lucide-react";
+import { Shield, Lock, Users, Settings, BarChart3, KeyRound } from "lucide-react";
 import { AdminUserManagement } from "@/components/AdminUserManagement";
 import { SystemStatistics } from "@/components/SystemStatistics";
+import { RolePermissionsManagement } from "@/components/RolePermissionsManagement";
 
 export default function AdminDashboard() {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -117,7 +118,7 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs defaultValue="statistics" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="statistics" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             إحصائيات النظام
@@ -125,6 +126,10 @@ export default function AdminDashboard() {
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             إدارة المستخدمين
+          </TabsTrigger>
+          <TabsTrigger value="permissions" className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4" />
+            صلاحيات الأدوار
           </TabsTrigger>
           <TabsTrigger value="password" className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
@@ -138,6 +143,10 @@ export default function AdminDashboard() {
 
         <TabsContent value="users" className="space-y-4">
           <AdminUserManagement />
+        </TabsContent>
+
+        <TabsContent value="permissions" className="space-y-4">
+          <RolePermissionsManagement />
         </TabsContent>
 
         <TabsContent value="password" className="space-y-4">
