@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Plus, FileText, Filter, X, MessageCircle, CheckSquare, MoreHorizontal, Check, ChevronsUpDown, Pencil, Trash2, ClipboardCheck, Download, Upload, Columns3, CalendarX2, CreditCard } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -147,6 +148,7 @@ export default function Appointments() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { canManagePayments } = useUserRole();
 
   // Debounce patient name filter
   useEffect(() => {
@@ -2209,22 +2211,24 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                         required
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="payment_amount">مبلغ الدفعة (اختياري)</Label>
-                      <Input
-                        id="payment_amount"
-                        type="text"
-                        value={treatmentRecord.payment_amount ? formatNumberWithCommas(treatmentRecord.payment_amount) : ''}
-                        onChange={(e) => {
-                          const rawValue = removeCommas(e.target.value);
-                          setTreatmentRecord({ ...treatmentRecord, payment_amount: rawValue });
-                        }}
-                        placeholder="أدخل مبلغ الدفعة إن وجد"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        اترك فارغاً إذا لم يتم الدفع
-                      </p>
-                    </div>
+                    {canManagePayments && (
+                      <div>
+                        <Label htmlFor="payment_amount">مبلغ الدفعة (اختياري)</Label>
+                        <Input
+                          id="payment_amount"
+                          type="text"
+                          value={treatmentRecord.payment_amount ? formatNumberWithCommas(treatmentRecord.payment_amount) : ''}
+                          onChange={(e) => {
+                            const rawValue = removeCommas(e.target.value);
+                            setTreatmentRecord({ ...treatmentRecord, payment_amount: rawValue });
+                          }}
+                          placeholder="أدخل مبلغ الدفعة إن وجد"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          اترك فارغاً إذا لم يتم الدفع
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -2575,18 +2579,20 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="payment_amount" className="text-sm">المبلغ المدفوع</Label>
-                  <Input
-                    id="payment_amount"
-                    type="number"
-                    step="0.01"
-                    value={planExecution.payment_amount}
-                    onChange={(e) => setPlanExecution({ ...planExecution, payment_amount: e.target.value })}
-                    placeholder="أدخل المبلغ المدفوع (اختياري)"
-                    className="h-9"
-                  />
-                </div>
+                {canManagePayments && (
+                  <div>
+                    <Label htmlFor="payment_amount" className="text-sm">المبلغ المدفوع</Label>
+                    <Input
+                      id="payment_amount"
+                      type="number"
+                      step="0.01"
+                      value={planExecution.payment_amount}
+                      onChange={(e) => setPlanExecution({ ...planExecution, payment_amount: e.target.value })}
+                      placeholder="أدخل المبلغ المدفوع (اختياري)"
+                      className="h-9"
+                    />
+                  </div>
+                )}
               </div>
 
               {planTreatmentSteps && planTreatmentSteps.length > 0 && (
@@ -2768,17 +2774,19 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     </Button>
                   </>
                 )}
-                <Button
-                  variant="outline"
-                  className="justify-start"
-                  onClick={() => {
-                    setIsAddPaymentDialogOpen(true);
-                    setShowOptionsMenu(false);
-                  }}
-                >
-                  <CreditCard className="h-4 w-4 ml-1" />
-                  إضافة دفعة
-                </Button>
+                {canManagePayments && (
+                  <Button
+                    variant="outline"
+                    className="justify-start"
+                    onClick={() => {
+                      setIsAddPaymentDialogOpen(true);
+                      setShowOptionsMenu(false);
+                    }}
+                  >
+                    <CreditCard className="h-4 w-4 ml-1" />
+                    إضافة دفعة
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   className="justify-start"

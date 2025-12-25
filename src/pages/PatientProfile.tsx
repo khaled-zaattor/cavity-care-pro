@@ -16,12 +16,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { useUserRole } from "@/hooks/useUserRole";
 
 export default function PatientProfile() {
   const { patientId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { canManagePayments } = useUserRole();
 
   const [isAppointmentDialogOpen, setIsAppointmentDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -1072,33 +1074,35 @@ export default function PatientProfile() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedAppointmentId(appointment.id);
-                            setIsPaymentDialogOpen(true);
-                          }}
-                        >
-                          <CreditCard className="h-4 w-4 ml-1" />
-                          إضافة دفعة
-                        </Button>
-                        {appointment.payments && appointment.payments.length > 0 && (
+                      {canManagePayments && (
+                        <div className="flex gap-2">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => {
                               setSelectedAppointmentId(appointment.id);
-                              setEditingPayments({});
-                              setIsEditPaymentDialogOpen(true);
+                              setIsPaymentDialogOpen(true);
                             }}
                           >
-                            <Edit className="h-4 w-4 ml-1" />
-                            تعديل دفعة
+                            <CreditCard className="h-4 w-4 ml-1" />
+                            إضافة دفعة
                           </Button>
-                        )}
-                      </div>
+                          {appointment.payments && appointment.payments.length > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedAppointmentId(appointment.id);
+                                setEditingPayments({});
+                                setIsEditPaymentDialogOpen(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4 ml-1" />
+                              تعديل دفعة
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
