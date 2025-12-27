@@ -69,6 +69,29 @@ export default function PatientProfile() {
     },
   });
 
+  // Query to get future appointments for this patient
+  const { data: patientFutureAppointments } = useQuery({
+    queryKey: ["patient-future-appointments", patientId],
+    queryFn: async () => {
+      if (!patientId) return [];
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("appointments")
+        .select(`
+          id,
+          scheduled_at,
+          status,
+          doctors (full_name)
+        `)
+        .eq("patient_id", patientId)
+        .gte("scheduled_at", now)
+        .order("scheduled_at", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!patientId,
+  });
+
   // Fetch doctors
   const { data: doctors } = useQuery({
     queryKey: ["doctors"],
@@ -627,6 +650,38 @@ export default function PatientProfile() {
                       onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
                     />
                   </div>
+                  
+                  {/* Display future appointments for this patient */}
+                  {patientFutureAppointments && patientFutureAppointments.length > 0 && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">
+                        مواعيد المريض المستقبلية ({patientFutureAppointments.length}):
+                      </p>
+                      <ul className="space-y-1 max-h-32 overflow-y-auto">
+                        {patientFutureAppointments.map((apt) => (
+                          <li key={apt.id} className="text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                            <span className="font-medium">
+                              {format(new Date(apt.scheduled_at), "yyyy/MM/dd")}
+                            </span>
+                            <span>
+                              {format(new Date(apt.scheduled_at), "HH:mm")}
+                            </span>
+                            <span className="text-amber-600 dark:text-amber-400">
+                              - {apt.doctors?.full_name}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                              apt.status === "Scheduled" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" :
+                              apt.status === "Completed" ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" :
+                              "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+                            }`}>
+                              {apt.status === "Scheduled" ? "مجدول" : apt.status === "Completed" ? "مكتمل" : "ملغي"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
                   <Button type="submit" disabled={createAppointmentMutation.isPending}>
                     {createAppointmentMutation.isPending ? "جاري الجدولة..." : "جدولة"}
                   </Button>
