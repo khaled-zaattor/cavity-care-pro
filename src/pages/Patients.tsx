@@ -432,8 +432,42 @@ export default function Patients() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // التحقق من عدم تكرار الاسم
+    const { data: existingPatients, error: checkError } = await supabase
+      .from("patients")
+      .select("id, full_name")
+      .ilike("full_name", newPatient.full_name.trim());
+    
+    if (checkError) {
+      toast({
+        title: "خطأ",
+        description: "فشل في التحقق من الاسم",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (existingPatients && existingPatients.length > 0) {
+      toast({
+        title: "تحذير: اسم مكرر",
+        description: `يوجد مريض بنفس الاسم "${existingPatients[0].full_name}" مسبقاً. هل تريد الاستمرار؟`,
+        variant: "destructive",
+        action: (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => createPatientMutation.mutate(newPatient)}
+          >
+            إضافة على أي حال
+          </Button>
+        ),
+      });
+      return;
+    }
+    
     createPatientMutation.mutate(newPatient);
   };
 
