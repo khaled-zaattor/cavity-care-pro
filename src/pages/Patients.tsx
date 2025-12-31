@@ -432,56 +432,8 @@ export default function Patients() {
     },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // التحقق من عدم تكرار الاسم أو رقم الهاتف
-    const { data: existingPatients, error: checkError } = await supabase
-      .from("patients")
-      .select("id, full_name, phone_number")
-      .or(`full_name.ilike.${newPatient.full_name.trim()},phone_number.eq.${newPatient.phone_number.trim()}`);
-    
-    if (checkError) {
-      toast({
-        title: "خطأ",
-        description: "فشل في التحقق من البيانات",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (existingPatients && existingPatients.length > 0) {
-      const duplicateName = existingPatients.find(
-        p => p.full_name.toLowerCase().trim() === newPatient.full_name.toLowerCase().trim()
-      );
-      const duplicatePhone = existingPatients.find(
-        p => p.phone_number.trim() === newPatient.phone_number.trim()
-      );
-      
-      if (duplicateName && duplicatePhone) {
-        toast({
-          title: "تحذير - بيانات مكررة",
-          description: "يوجد مريض بنفس الاسم ورقم الهاتف",
-          variant: "destructive",
-        });
-        return;
-      } else if (duplicateName) {
-        toast({
-          title: "تحذير - اسم مكرر",
-          description: `يوجد مريض بنفس الاسم: ${duplicateName.full_name}`,
-          variant: "destructive",
-        });
-        return;
-      } else if (duplicatePhone) {
-        toast({
-          title: "تحذير - رقم هاتف مكرر",
-          description: `رقم الهاتف مسجل باسم: ${duplicatePhone.full_name}`,
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-    
     createPatientMutation.mutate(newPatient);
   };
 
