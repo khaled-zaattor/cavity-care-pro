@@ -452,18 +452,9 @@ export default function Patients() {
     
     if (existingPatients && existingPatients.length > 0) {
       toast({
-        title: "تحذير: اسم مكرر",
-        description: `يوجد مريض بنفس الاسم "${existingPatients[0].full_name}" مسبقاً. هل تريد الاستمرار؟`,
+        title: "خطأ: اسم مكرر",
+        description: `يوجد مريض بنفس الاسم "${existingPatients[0].full_name}" مسبقاً. لا يمكن إضافة مريض باسم مكرر.`,
         variant: "destructive",
-        action: (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => createPatientMutation.mutate(newPatient)}
-          >
-            إضافة على أي حال
-          </Button>
-        ),
       });
       return;
     }
