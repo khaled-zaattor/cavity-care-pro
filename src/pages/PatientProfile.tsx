@@ -36,7 +36,8 @@ export default function PatientProfile() {
   const [treatmentToDelete, setTreatmentToDelete] = useState<string | null>(null);
   const [isEditTreatmentCostDialogOpen, setIsEditTreatmentCostDialogOpen] = useState(false);
   const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<any>(null);
-  const [editingTreatmentCost, setEditingTreatmentCost] = useState("");
+  const [editingTreatmentCostSyp, setEditingTreatmentCostSyp] = useState("");
+  const [editingTreatmentCostUsd, setEditingTreatmentCostUsd] = useState("");
 
   const [treatmentPlan, setTreatmentPlan] = useState({
     treatment_id: "",
@@ -220,16 +221,22 @@ export default function PatientProfile() {
         .from("payments")
         .select(`
           amount,
+          currency,
           appointments!inner (patient_id)
         `)
         .eq("appointments.patient_id", patientId);
 
       if (trError || pError) throw trError || pError;
 
-      const totalCost = treatmentRecords?.reduce((sum, record) => sum + Number((record as any).actual_cost || 0), 0) || 0;
-      const totalPaid = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+      const totalCostSyp = treatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_syp || 0), 0) || 0;
+      const totalCostUsd = treatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_usd || 0), 0) || 0;
+      const totalPaidSyp = payments?.filter(p => (p as any).currency === 'SYP' || !(p as any).currency).reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+      const totalPaidUsd = payments?.filter(p => (p as any).currency === 'USD').reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
 
-      return totalCost - totalPaid;
+      return {
+        syp: totalCostSyp - totalPaidSyp,
+        usd: totalCostUsd - totalPaidUsd,
+      };
     },
   });
 
@@ -376,10 +383,10 @@ export default function PatientProfile() {
 
   // Update treatment cost mutation
   const updateTreatmentCostMutation = useMutation({
-    mutationFn: async ({ treatmentRecordId, newCost }: { treatmentRecordId: string; newCost: number }) => {
+    mutationFn: async ({ treatmentRecordId, newCostSyp, newCostUsd }: { treatmentRecordId: string; newCostSyp: number; newCostUsd: number }) => {
       const { error } = await supabase
         .from("treatment_records")
-        .update({ actual_cost: newCost })
+        .update({ actual_cost_syp: newCostSyp, actual_cost_usd: newCostUsd })
         .eq("id", treatmentRecordId);
       if (error) throw error;
     },
@@ -388,7 +395,8 @@ export default function PatientProfile() {
       queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
       queryClient.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
       setIsEditTreatmentCostDialogOpen(false);
-      setEditingTreatmentCost("");
+      setEditingTreatmentCostSyp("");
+      setEditingTreatmentCostUsd("");
       toast({ title: "نجح", description: "تم تعديل كلفة العلاج بنجاح" });
     },
   });
@@ -446,7 +454,8 @@ export default function PatientProfile() {
       'العلاج': record.treatments?.name || '',
       'الإجراء الفرعي': record.sub_treatments?.name || '',
       'السن': record.tooth_number,
-      'التكلفة الفعلية': Math.round(record.actual_cost || 0),
+      'التكلفة بالليرة': Math.round(record.actual_cost_syp || 0),
+      'التكلفة بالدولار': record.actual_cost_usd || 0,
       'الحالة': record.is_completed ? 'مكتمل' : 'غير مكتمل'
     })) || [];
 
@@ -454,19 +463,24 @@ export default function PatientProfile() {
     const paymentsData = allPayments?.map(payment => ({
       'التاريخ': format(new Date(payment.paid_at), 'dd/MM/yyyy'),
       'المبلغ': Math.round(payment.amount),
+      'العملة': (payment as any).currency === 'USD' ? 'دولار' : 'ليرة سورية',
       'الموعد': format(new Date((payment.appointments as any)?.scheduled_at), 'dd/MM/yyyy'),
       'الطبيب': (payment.appointments as any)?.doctors?.full_name || ''
     })) || [];
 
     // Calculate totals
-    const totalCost = allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost || 0), 0) || 0;
-    const totalPaid = allPayments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-    const remainingBalance = totalCost - totalPaid;
+    const totalCostSyp = allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_syp || 0), 0) || 0;
+    const totalCostUsd = allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_usd || 0), 0) || 0;
+    const totalPaidSyp = allPayments?.filter(p => (p as any).currency === 'SYP' || !(p as any).currency).reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+    const totalPaidUsd = allPayments?.filter(p => (p as any).currency === 'USD').reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
 
     const summaryData = [{
-      'إجمالي التكلفة': Math.round(totalCost),
-      'إجمالي المدفوع': Math.round(totalPaid),
-      'الرصيد المتبقي': Math.round(remainingBalance)
+      'إجمالي التكلفة بالليرة': Math.round(totalCostSyp),
+      'إجمالي التكلفة بالدولار': totalCostUsd,
+      'إجمالي المدفوع بالليرة': Math.round(totalPaidSyp),
+      'إجمالي المدفوع بالدولار': totalPaidUsd,
+      'الرصيد بالليرة': Math.round(totalCostSyp - totalPaidSyp),
+      'الرصيد بالدولار': totalCostUsd - totalPaidUsd,
     }];
 
     // Create workbook
@@ -593,10 +607,20 @@ export default function PatientProfile() {
             <CardTitle>الرصيد</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              ${balance?.toFixed(2) || "0.00"}
+            <div className="space-y-2">
+              <div>
+                <div className={`text-xl font-bold ${balance?.syp && balance.syp > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {Math.round(Math.abs(balance?.syp || 0)).toLocaleString('en-US')} ل.س
+                </div>
+                <p className="text-xs text-muted-foreground">{balance?.syp && balance.syp > 0 ? 'مستحق بالليرة' : 'رصيد زائد بالليرة'}</p>
+              </div>
+              <div>
+                <div className={`text-xl font-bold ${balance?.usd && balance.usd > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  ${Math.round(Math.abs(balance?.usd || 0)).toLocaleString('en-US')}
+                </div>
+                <p className="text-xs text-muted-foreground">{balance?.usd && balance.usd > 0 ? 'مستحق بالدولار' : 'رصيد زائد بالدولار'}</p>
+              </div>
             </div>
-            <p className="text-muted-foreground">الرصيد المستحق</p>
           </CardContent>
         </Card>
 
@@ -1345,7 +1369,8 @@ export default function PatientProfile() {
                             size="sm"
                             onClick={() => {
                               setSelectedTreatmentRecord(record);
-                              setEditingTreatmentCost("");
+                              setEditingTreatmentCostSyp(record.actual_cost_syp?.toString() || "");
+                              setEditingTreatmentCostUsd(record.actual_cost_usd?.toString() || "");
                               setIsEditTreatmentCostDialogOpen(true);
                             }}
                           >
@@ -1403,19 +1428,33 @@ export default function PatientProfile() {
                     {Math.round(selectedTreatmentRecord.actual_cost || 0).toLocaleString('en-US')}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-cost">الكلفة الجديدة</Label>
-                  <Input
-                    id="new-cost"
-                    type="text"
-                    placeholder="أدخل الكلفة الجديدة"
-                    value={editingTreatmentCost}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/[^\d]/g, '');
-                      const formatted = value ? parseInt(value).toLocaleString('en-US') : '';
-                      setEditingTreatmentCost(formatted);
-                    }}
-                  />
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="new-cost-syp">الكلفة بالليرة السورية</Label>
+                    <Input
+                      id="new-cost-syp"
+                      type="text"
+                      placeholder="أدخل الكلفة بالليرة"
+                      value={editingTreatmentCostSyp}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^\d]/g, '');
+                        setEditingTreatmentCostSyp(value);
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="new-cost-usd">الكلفة بالدولار</Label>
+                    <Input
+                      id="new-cost-usd"
+                      type="text"
+                      placeholder="أدخل الكلفة بالدولار"
+                      value={editingTreatmentCostUsd}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^\d.]/g, '');
+                        setEditingTreatmentCostUsd(value);
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="flex gap-2 justify-end">
                   <Button
@@ -1425,15 +1464,13 @@ export default function PatientProfile() {
                     إلغاء
                   </Button>
                   <Button
-                    disabled={!editingTreatmentCost || updateTreatmentCostMutation.isPending}
+                    disabled={updateTreatmentCostMutation.isPending}
                     onClick={() => {
-                      if (editingTreatmentCost) {
-                        const numericValue = parseInt(editingTreatmentCost.replace(/,/g, ''));
-                        updateTreatmentCostMutation.mutate({
-                          treatmentRecordId: selectedTreatmentRecord.id,
-                          newCost: numericValue
-                        });
-                      }
+                      updateTreatmentCostMutation.mutate({
+                        treatmentRecordId: selectedTreatmentRecord.id,
+                        newCostSyp: parseFloat(editingTreatmentCostSyp) || 0,
+                        newCostUsd: parseFloat(editingTreatmentCostUsd) || 0
+                      });
                     }}
                   >
                     {updateTreatmentCostMutation.isPending ? "جاري الحفظ..." : "حفظ"}
@@ -1489,16 +1526,30 @@ export default function PatientProfile() {
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-blue-600">
-                        {Math.round(allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost || 0), 0) || 0).toLocaleString('en-US')}
+                        {Math.round(allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_syp || 0), 0) || 0).toLocaleString('en-US')} ل.س
                       </div>
-                      <p className="text-sm text-muted-foreground">إجمالي تكلفة العلاجات</p>
+                      <p className="text-sm text-muted-foreground">إجمالي تكلفة العلاجات بالليرة</p>
                     </div>
                     <div>
-                      <div className={`text-2xl font-bold ${balance && balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {Math.round(Math.abs(balance || 0)).toLocaleString('en-US')}
+                      <div className="text-2xl font-bold text-blue-600">
+                        ${Math.round(allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_usd || 0), 0) || 0).toLocaleString('en-US')}
+                      </div>
+                      <p className="text-sm text-muted-foreground">إجمالي تكلفة العلاجات بالدولار</p>
+                    </div>
+                    <div>
+                      <div className={`text-2xl font-bold ${balance?.syp && balance.syp > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {Math.round(Math.abs(balance?.syp || 0)).toLocaleString('en-US')} ل.س
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {balance && balance > 0 ? 'المبلغ المستحق' : 'رصيد زائد'}
+                        {balance?.syp && balance.syp > 0 ? 'المبلغ المستحق بالليرة' : 'رصيد زائد بالليرة'}
+                      </p>
+                    </div>
+                    <div>
+                      <div className={`text-2xl font-bold ${balance?.usd && balance.usd > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        ${Math.round(Math.abs(balance?.usd || 0)).toLocaleString('en-US')}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {balance?.usd && balance.usd > 0 ? 'المبلغ المستحق بالدولار' : 'رصيد زائد بالدولار'}
                       </p>
                     </div>
                   </div>

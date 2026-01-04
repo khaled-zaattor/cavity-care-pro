@@ -39,22 +39,30 @@ export function SystemStatistics() {
           .lte("performed_at", endDateTime.toISOString()),
         supabase
           .from("treatment_records")
-          .select("actual_cost")
+          .select("actual_cost_syp, actual_cost_usd")
           .gte("performed_at", startDateTime.toISOString())
           .lte("performed_at", endDateTime.toISOString()),
         supabase
           .from("payments")
-          .select("amount")
+          .select("amount, currency")
           .gte("paid_at", startDateTime.toISOString())
           .lte("paid_at", endDateTime.toISOString()),
       ]);
 
-      const totalTreatmentCost = treatmentRecords.data?.reduce(
-        (sum, record) => sum + Number(record.actual_cost || 0), 
+      const totalTreatmentCostSyp = treatmentRecords.data?.reduce(
+        (sum, record) => sum + Number(record.actual_cost_syp || 0), 
+        0
+      ) || 0;
+      const totalTreatmentCostUsd = treatmentRecords.data?.reduce(
+        (sum, record) => sum + Number(record.actual_cost_usd || 0), 
         0
       ) || 0;
 
-      const totalPayments = payments.data?.reduce(
+      const totalPaymentsSyp = payments.data?.filter(p => p.currency === 'SYP' || !p.currency).reduce(
+        (sum, payment) => sum + Number(payment.amount), 
+        0
+      ) || 0;
+      const totalPaymentsUsd = payments.data?.filter(p => p.currency === 'USD').reduce(
         (sum, payment) => sum + Number(payment.amount), 
         0
       ) || 0;
@@ -63,9 +71,12 @@ export function SystemStatistics() {
         patientsCount: patients.count || 0,
         appointmentsCount: appointments.count || 0,
         treatmentsCount: treatments.count || 0,
-        treatmentCost: totalTreatmentCost,
-        totalPayments: totalPayments,
-        totalRevenue: totalPayments - totalTreatmentCost,
+        treatmentCostSyp: totalTreatmentCostSyp,
+        treatmentCostUsd: totalTreatmentCostUsd,
+        totalPaymentsSyp: totalPaymentsSyp,
+        totalPaymentsUsd: totalPaymentsUsd,
+        totalRevenueSyp: totalPaymentsSyp - totalTreatmentCostSyp,
+        totalRevenueUsd: totalPaymentsUsd - totalTreatmentCostUsd,
       };
     },
   });
@@ -91,22 +102,40 @@ export function SystemStatistics() {
       color: "text-purple-600",
     },
     {
-      title: "كلفة العلاجات",
-      value: `$${stats?.treatmentCost?.toFixed(2) || "0.00"}`,
+      title: "كلفة العلاجات (ل.س)",
+      value: `${Math.round(stats?.treatmentCostSyp || 0).toLocaleString('en-US')} ل.س`,
       icon: TrendingUp,
       color: "text-orange-600",
     },
     {
-      title: "المدفوعات",
-      value: `$${stats?.totalPayments?.toFixed(2) || "0.00"}`,
+      title: "كلفة العلاجات ($)",
+      value: `$${Math.round(stats?.treatmentCostUsd || 0).toLocaleString('en-US')}`,
+      icon: TrendingUp,
+      color: "text-orange-600",
+    },
+    {
+      title: "المدفوعات (ل.س)",
+      value: `${Math.round(stats?.totalPaymentsSyp || 0).toLocaleString('en-US')} ل.س`,
       icon: DollarSign,
       color: "text-emerald-600",
     },
     {
-      title: "الإيرادات",
-      value: `$${stats?.totalRevenue?.toFixed(2) || "0.00"}`,
+      title: "المدفوعات ($)",
+      value: `$${Math.round(stats?.totalPaymentsUsd || 0).toLocaleString('en-US')}`,
       icon: DollarSign,
       color: "text-emerald-600",
+    },
+    {
+      title: "الإيرادات (ل.س)",
+      value: `${Math.round(stats?.totalRevenueSyp || 0).toLocaleString('en-US')} ل.س`,
+      icon: DollarSign,
+      color: stats?.totalRevenueSyp && stats.totalRevenueSyp < 0 ? "text-red-600" : "text-emerald-600",
+    },
+    {
+      title: "الإيرادات ($)",
+      value: `$${Math.round(stats?.totalRevenueUsd || 0).toLocaleString('en-US')}`,
+      icon: DollarSign,
+      color: stats?.totalRevenueUsd && stats.totalRevenueUsd < 0 ? "text-red-600" : "text-emerald-600",
     },
   ];
 

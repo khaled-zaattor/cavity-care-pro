@@ -24,7 +24,8 @@ export default function OngoingTreatments() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false);
   const [selectedTreatment, setSelectedTreatment] = useState<any>(null);
-  const [editCost, setEditCost] = useState("");
+  const [editCostSyp, setEditCostSyp] = useState("");
+  const [editCostUsd, setEditCostUsd] = useState("");
   
   // Filter states
   const [filterPatientName, setFilterPatientName] = useState("");
@@ -172,10 +173,10 @@ export default function OngoingTreatments() {
 
   // Update cost mutation
   const updateCostMutation = useMutation({
-    mutationFn: async ({ id, actual_cost }: { id: string; actual_cost: number }) => {
+    mutationFn: async ({ id, actual_cost_syp, actual_cost_usd }: { id: string; actual_cost_syp: number; actual_cost_usd: number }) => {
       const { error } = await supabase
         .from("treatment_records")
-        .update({ actual_cost })
+        .update({ actual_cost_syp, actual_cost_usd })
         .eq("id", id);
       if (error) throw error;
     },
@@ -232,7 +233,8 @@ export default function OngoingTreatments() {
 
   const handleEditCost = (treatment: any) => {
     setSelectedTreatment(treatment);
-    setEditCost(treatment.actual_cost?.toString() || "");
+    setEditCostSyp(treatment.actual_cost_syp?.toString() || "");
+    setEditCostUsd(treatment.actual_cost_usd?.toString() || "");
     setIsEditCostDialogOpen(true);
   };
 
@@ -264,7 +266,8 @@ export default function OngoingTreatments() {
       "العلاج": record.treatments?.name || "",
       "العلاج الفرعي": record.sub_treatments?.name || "",
       "الخطوات المنفذة": getCompletedStepsForTreatment(record),
-      "التكلفة": record.actual_cost || "",
+      "التكلفة بالليرة": record.actual_cost_syp || 0,
+      "التكلفة بالدولار": record.actual_cost_usd || 0,
       "الحالة": record.is_completed ? "مكتمل" : "جاري",
       "الطبيب": record.appointments?.doctors?.full_name || "",
       "ملاحظات العلاج": record.treatment_notes || "",
@@ -399,7 +402,7 @@ export default function OngoingTreatments() {
                         <TableCell className="max-w-[200px] truncate">
                           {getCompletedStepsForTreatment(record) || "-"}
                         </TableCell>
-                        <TableCell>{record.actual_cost || "-"}</TableCell>
+                        <TableCell>{record.actual_cost_syp ? `${record.actual_cost_syp.toLocaleString('en-US')} ل.س` : "-"} {record.actual_cost_usd ? `/ $${record.actual_cost_usd}` : ""}</TableCell>
                         <TableCell>
                           <Badge variant={record.is_completed ? "default" : "secondary"}>
                             {record.is_completed ? "مكتمل" : "جاري"}
@@ -474,7 +477,7 @@ export default function OngoingTreatments() {
                         </div>
                         <div>
                           <span className="text-muted-foreground">التكلفة: </span>
-                          {record.actual_cost || "-"}
+                          {record.actual_cost_syp ? `${record.actual_cost_syp.toLocaleString('en-US')} ل.س` : "-"} {record.actual_cost_usd ? `/ $${record.actual_cost_usd}` : ""}
                         </div>
                         <div className="col-span-2">
                           <span className="text-muted-foreground">العلاج: </span>
@@ -535,12 +538,21 @@ export default function OngoingTreatments() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>التكلفة الجديدة</Label>
+              <Label>التكلفة بالليرة السورية</Label>
               <Input
                 type="number"
-                value={editCost}
-                onChange={(e) => setEditCost(e.target.value)}
-                placeholder="أدخل التكلفة"
+                value={editCostSyp}
+                onChange={(e) => setEditCostSyp(e.target.value)}
+                placeholder="أدخل التكلفة بالليرة"
+              />
+            </div>
+            <div>
+              <Label>التكلفة بالدولار</Label>
+              <Input
+                type="number"
+                value={editCostUsd}
+                onChange={(e) => setEditCostUsd(e.target.value)}
+                placeholder="أدخل التكلفة بالدولار"
               />
             </div>
           </div>
@@ -550,10 +562,11 @@ export default function OngoingTreatments() {
             </Button>
             <Button
               onClick={() => {
-                if (selectedTreatment && editCost) {
+                if (selectedTreatment) {
                   updateCostMutation.mutate({
                     id: selectedTreatment.id,
-                    actual_cost: parseFloat(editCost),
+                    actual_cost_syp: parseFloat(editCostSyp) || 0,
+                    actual_cost_usd: parseFloat(editCostUsd) || 0,
                   });
                 }
               }}

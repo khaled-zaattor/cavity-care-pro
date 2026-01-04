@@ -42,6 +42,7 @@ export default function Appointments() {
   const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
   const [isAddPaymentDialogOpen, setIsAddPaymentDialogOpen] = useState(false);
   const [newPaymentAmount, setNewPaymentAmount] = useState("");
+  const [newPaymentCurrency, setNewPaymentCurrency] = useState("SYP");
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
@@ -95,8 +96,10 @@ export default function Appointments() {
   const [isColumnSelectDialogOpen, setIsColumnSelectDialogOpen] = useState(false);
 
   const [planExecution, setPlanExecution] = useState({
-    actual_cost: "",
+    actual_cost_syp: "",
+    actual_cost_usd: "",
     payment_amount: "",
+    payment_currency: "SYP",
     notes: "",
     treatment_notes: "",
   });
@@ -139,8 +142,10 @@ export default function Appointments() {
     treatment_id: "",
     sub_treatment_id: "",
     tooth_numbers: [] as string[],
-    actual_cost: "",
+    actual_cost_syp: "",
+    actual_cost_usd: "",
     payment_amount: "",
+    payment_currency: "SYP",
     notes: "",
     treatment_notes: "",
   });
@@ -426,7 +431,8 @@ export default function Appointments() {
     if (selectedTreatmentPlan && planSubTreatmentDetails) {
       setPlanExecution(prev => ({
         ...prev,
-        actual_cost: planSubTreatmentDetails.estimated_cost?.toString().replace(/,/g, '') || ""
+        actual_cost_syp: planSubTreatmentDetails.estimated_cost_syp?.toString().replace(/,/g, '') || "",
+        actual_cost_usd: planSubTreatmentDetails.estimated_cost_usd?.toString().replace(/,/g, '') || ""
       }));
     }
   }, [selectedTreatmentPlan, planSubTreatmentDetails]);
@@ -772,7 +778,8 @@ export default function Appointments() {
           sub_treatment_id: record.sub_treatment_id,
           tooth_number: record.tooth_numbers.join(", "),
           appointment_id: selectedAppointment.id,
-          actual_cost: record.actual_cost ? parseFloat(record.actual_cost) : null,
+          actual_cost_syp: record.actual_cost_syp ? parseFloat(record.actual_cost_syp) : 0,
+          actual_cost_usd: record.actual_cost_usd ? parseFloat(record.actual_cost_usd) : 0,
           performed_at: new Date().toISOString(),
           is_completed: isCompleted,
           treatment_notes: record.treatment_notes || null
@@ -811,6 +818,7 @@ export default function Appointments() {
           .insert({
             appointment_id: selectedAppointment.id,
             amount: parseFloat(record.payment_amount),
+            currency: record.payment_currency,
             paid_at: new Date().toISOString()
           });
         if (paymentError) throw paymentError;
@@ -839,7 +847,7 @@ export default function Appointments() {
       queryClient.invalidateQueries({ queryKey: ["completed-steps"] });
       queryClient.invalidateQueries({ queryKey: ["unfinished-treatments"] });
       setIsRecordDialogOpen(false);
-      setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_numbers: [], actual_cost: "", payment_amount: "", notes: "", treatment_notes: "" });
+      setTreatmentRecord({ treatment_id: "", sub_treatment_id: "", tooth_numbers: [], actual_cost_syp: "", actual_cost_usd: "", payment_amount: "", payment_currency: "SYP", notes: "", treatment_notes: "" });
       setTeethType("adult");
       setSelectedSteps([]);
       toast({ title: "نجح", description: "تم تسجيل العلاج والدفعة بنجاح" });
@@ -1025,7 +1033,8 @@ export default function Appointments() {
           sub_treatment_id: selectedTreatmentPlan.sub_treatment_id,
           tooth_number: selectedTreatmentPlan.tooth_number,
           appointment_id: selectedAppointment.id,
-          actual_cost: planExecution.actual_cost ? parseFloat(planExecution.actual_cost) : null,
+          actual_cost_syp: planExecution.actual_cost_syp ? parseFloat(planExecution.actual_cost_syp) : 0,
+          actual_cost_usd: planExecution.actual_cost_usd ? parseFloat(planExecution.actual_cost_usd) : 0,
           performed_at: new Date().toISOString(),
           is_completed: isCompleted,
           treatment_notes: updatedNotes
@@ -1064,6 +1073,7 @@ export default function Appointments() {
           .insert({
             appointment_id: selectedAppointment.id,
             amount: parseFloat(planExecution.payment_amount),
+            currency: planExecution.payment_currency,
             paid_at: new Date().toISOString()
           });
         if (paymentError) throw paymentError;
@@ -1105,7 +1115,7 @@ export default function Appointments() {
       setIsExecutePlanDetailsDialogOpen(false);
       setIsExecutePlanDialogOpen(false);
       setSelectedTreatmentPlan(null);
-      setPlanExecution({ actual_cost: "", payment_amount: "", notes: "", treatment_notes: "" });
+      setPlanExecution({ actual_cost_syp: "", actual_cost_usd: "", payment_amount: "", payment_currency: "SYP", notes: "", treatment_notes: "" });
       setSelectedSteps([]);
       toast({ title: "نجح", description: "تم تنفيذ خطة العلاج بنجاح" });
     },
@@ -1961,7 +1971,8 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     setTreatmentRecord({
                       ...treatmentRecord,
                       sub_treatment_id: value,
-                      actual_cost: selectedSubTreatment?.estimated_cost?.toString().replace(/,/g, '') || "",
+                      actual_cost_syp: selectedSubTreatment?.estimated_cost_syp?.toString().replace(/,/g, '') || "",
+                      actual_cost_usd: selectedSubTreatment?.estimated_cost_usd?.toString().replace(/,/g, '') || "",
                       tooth_numbers: [] // Reset tooth selection when changing sub-treatment
                     });
                   }}
@@ -1972,7 +1983,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   <SelectContent>
                     {subTreatments?.map((subTreatment) => (
                       <SelectItem key={subTreatment.id} value={subTreatment.id}>
-                        {subTreatment.name} - {formatNumberWithCommas(subTreatment.estimated_cost?.toString() || '0')}
+                        {subTreatment.name} - {formatNumberWithCommas(subTreatment.estimated_cost_syp?.toString() || '0')} ل.س
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -2252,37 +2263,67 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     )}
                   </div>
                   <div className="space-y-3">
-                    <div>
-                      <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
-                      <Input
-                        id="actual_cost"
-                        type="text"
-                        value={treatmentRecord.actual_cost ? formatNumberWithCommas(treatmentRecord.actual_cost) : ''}
-                        onChange={(e) => {
-                          const rawValue = removeCommas(e.target.value);
-                          setTreatmentRecord({ ...treatmentRecord, actual_cost: rawValue });
-                        }}
-                        placeholder="أدخل التكلفة الحقيقية"
-                        required
-                      />
-                    </div>
-                    {canManagePayments && (
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <Label htmlFor="payment_amount">مبلغ الدفعة (اختياري)</Label>
+                        <Label htmlFor="actual_cost_syp">التكلفة بالليرة السورية</Label>
                         <Input
-                          id="payment_amount"
+                          id="actual_cost_syp"
                           type="text"
-                          value={treatmentRecord.payment_amount ? formatNumberWithCommas(treatmentRecord.payment_amount) : ''}
+                          value={treatmentRecord.actual_cost_syp ? formatNumberWithCommas(treatmentRecord.actual_cost_syp) : ''}
                           onChange={(e) => {
                             const rawValue = removeCommas(e.target.value);
-                            setTreatmentRecord({ ...treatmentRecord, payment_amount: rawValue });
+                            setTreatmentRecord({ ...treatmentRecord, actual_cost_syp: rawValue });
                           }}
-                          placeholder="أدخل مبلغ الدفعة إن وجد"
+                          placeholder="التكلفة بالليرة"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          اترك فارغاً إذا لم يتم الدفع
-                        </p>
                       </div>
+                      <div>
+                        <Label htmlFor="actual_cost_usd">التكلفة بالدولار</Label>
+                        <Input
+                          id="actual_cost_usd"
+                          type="text"
+                          value={treatmentRecord.actual_cost_usd ? formatNumberWithCommas(treatmentRecord.actual_cost_usd) : ''}
+                          onChange={(e) => {
+                            const rawValue = removeCommas(e.target.value);
+                            setTreatmentRecord({ ...treatmentRecord, actual_cost_usd: rawValue });
+                          }}
+                          placeholder="التكلفة بالدولار"
+                        />
+                      </div>
+                    </div>
+                    {canManagePayments && (
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2">
+                          <Label htmlFor="payment_amount">مبلغ الدفعة (اختياري)</Label>
+                          <Input
+                            id="payment_amount"
+                            type="text"
+                            value={treatmentRecord.payment_amount ? formatNumberWithCommas(treatmentRecord.payment_amount) : ''}
+                            onChange={(e) => {
+                              const rawValue = removeCommas(e.target.value);
+                              setTreatmentRecord({ ...treatmentRecord, payment_amount: rawValue });
+                            }}
+                            placeholder="أدخل مبلغ الدفعة"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="payment_currency">العملة</Label>
+                          <Select value={treatmentRecord.payment_currency} onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, payment_currency: value })}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="SYP">ل.س</SelectItem>
+                              <SelectItem value="USD">$</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+                    {canManagePayments && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        اترك فارغاً إذا لم يتم الدفع
+                      </p>
                     )}
                   </div>
                 </div>
@@ -2412,7 +2453,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                             <h4 className="font-semibold">{treatment.treatment_name}</h4>
                             <p className="text-sm text-muted-foreground">{treatment.sub_treatment_name}</p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              السن: {treatment.tooth_number} | التكلفة: {Math.round(treatment.actual_cost || 0).toLocaleString('en-US')}
+                              السن: {treatment.tooth_number} | التكلفة: {Math.round(treatment.actual_cost_syp || 0).toLocaleString('en-US')} ل.س
                             </p>
                           </div>
                           <div className="text-xs text-orange-600 font-medium">
@@ -2622,20 +2663,34 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <Label htmlFor="actual_cost" className="text-sm">التكلفة الفعلية</Label>
+                  <Label htmlFor="actual_cost_syp" className="text-sm">التكلفة بالليرة</Label>
                   <Input
-                    id="actual_cost"
+                    id="actual_cost_syp"
                     type="number"
                     step="0.01"
-                    value={planExecution.actual_cost}
-                    onChange={(e) => setPlanExecution({ ...planExecution, actual_cost: e.target.value })}
-                    placeholder="أدخل التكلفة الفعلية"
+                    value={planExecution.actual_cost_syp}
+                    onChange={(e) => setPlanExecution({ ...planExecution, actual_cost_syp: e.target.value })}
+                    placeholder="التكلفة بالليرة"
                     className="h-9"
                   />
                 </div>
+                <div>
+                  <Label htmlFor="actual_cost_usd" className="text-sm">التكلفة بالدولار</Label>
+                  <Input
+                    id="actual_cost_usd"
+                    type="number"
+                    step="0.01"
+                    value={planExecution.actual_cost_usd}
+                    onChange={(e) => setPlanExecution({ ...planExecution, actual_cost_usd: e.target.value })}
+                    placeholder="التكلفة بالدولار"
+                    className="h-9"
+                  />
+                </div>
+              </div>
 
-                {canManagePayments && (
-                  <div>
+              {canManagePayments && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
                     <Label htmlFor="payment_amount" className="text-sm">المبلغ المدفوع</Label>
                     <Input
                       id="payment_amount"
@@ -2647,8 +2702,20 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       className="h-9"
                     />
                   </div>
-                )}
-              </div>
+                  <div>
+                    <Label htmlFor="payment_currency" className="text-sm">العملة</Label>
+                    <Select value={planExecution.payment_currency} onValueChange={(value) => setPlanExecution({ ...planExecution, payment_currency: value })}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SYP">ل.س</SelectItem>
+                        <SelectItem value="USD">$</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
 
               {planTreatmentSteps && planTreatmentSteps.length > 0 && (
                 <div>
