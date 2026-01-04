@@ -41,7 +41,8 @@ export default function Treatments() {
             'العلاج': treatment.name,
             'وصف العلاج': treatment.description || '-',
             'العلاج الفرعي': subTreatment.name,
-            'التكلفة التقديرية': subTreatment.estimated_cost || '-',
+            'التكلفة بالليرة': subTreatment.estimated_cost_syp || 0,
+            'التكلفة بالدولار': subTreatment.estimated_cost_usd || 0,
             'عدد الخطوات': subTreatment.sub_treatment_steps?.length || 0,
             'نسبة الإكمال': `${calculateSubTreatmentProgress(subTreatment.sub_treatment_steps)}%`
           });
@@ -173,7 +174,8 @@ export default function Treatments() {
 
   const [newSubTreatment, setNewSubTreatment] = useState({
     name: "",
-    estimated_cost: "",
+    estimated_cost_syp: "",
+    estimated_cost_usd: "",
     tooth_association: "not_related" as "not_related" | "single_tooth" | "multiple_teeth",
   });
 
@@ -197,7 +199,8 @@ export default function Treatments() {
           sub_treatments (
             id, 
             name,
-            estimated_cost,
+            estimated_cost_syp,
+            estimated_cost_usd,
             tooth_association,
             sub_treatment_steps (
               id,
@@ -260,7 +263,8 @@ export default function Treatments() {
         .insert([{
           name: subTreatment.name,
           treatment_id: selectedTreatmentId,
-          estimated_cost: parseInt(subTreatment.estimated_cost),
+          estimated_cost_syp: parseInt(subTreatment.estimated_cost_syp) || 0,
+          estimated_cost_usd: parseFloat(subTreatment.estimated_cost_usd) || 0,
           tooth_association: subTreatment.tooth_association
         }])
         .select();
@@ -270,7 +274,7 @@ export default function Treatments() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       setIsSubTreatmentDialogOpen(false);
-      setNewSubTreatment({ name: "", estimated_cost: "", tooth_association: "not_related" });
+      setNewSubTreatment({ name: "", estimated_cost_syp: "", estimated_cost_usd: "", tooth_association: "not_related" });
       toast({ title: "نجح", description: "تم إضافة العلاج الفرعي بنجاح" });
     },
   });
@@ -281,7 +285,8 @@ export default function Treatments() {
         .from("sub_treatments")
         .update({
           name: subTreatment.name,
-          estimated_cost: parseInt(subTreatment.estimated_cost),
+          estimated_cost_syp: parseInt(subTreatment.estimated_cost_syp) || 0,
+          estimated_cost_usd: parseFloat(subTreatment.estimated_cost_usd) || 0,
           tooth_association: subTreatment.tooth_association
         })
         .eq("id", subTreatment.id)
@@ -293,7 +298,7 @@ export default function Treatments() {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       setIsSubTreatmentDialogOpen(false);
       setEditingSubTreatmentId(null);
-      setNewSubTreatment({ name: "", estimated_cost: "", tooth_association: "not_related" });
+      setNewSubTreatment({ name: "", estimated_cost_syp: "", estimated_cost_usd: "", tooth_association: "not_related" });
       toast({ title: "نجح", description: "تم تحديث العلاج الفرعي بنجاح" });
     },
   });
@@ -634,8 +639,12 @@ export default function Treatments() {
                                   {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                   <div>
                                     <span className="font-medium">{subTreatment.name}</span>
-                                    {subTreatment.estimated_cost && (
-                                      <p className="text-sm font-bold text-primary">{Math.round(subTreatment.estimated_cost).toLocaleString('en-US')}</p>
+                                    {(subTreatment.estimated_cost_syp || subTreatment.estimated_cost_usd) && (
+                                      <p className="text-sm font-bold text-primary">
+                                        {subTreatment.estimated_cost_syp ? `${Math.round(subTreatment.estimated_cost_syp).toLocaleString('en-US')} ل.س` : ''}
+                                        {subTreatment.estimated_cost_syp && subTreatment.estimated_cost_usd ? ' / ' : ''}
+                                        {subTreatment.estimated_cost_usd ? `$${subTreatment.estimated_cost_usd}` : ''}
+                                      </p>
                                     )}
                                   </div>
                                   <div className="flex items-center space-x-2">
@@ -660,15 +669,16 @@ export default function Treatments() {
                                        variant="outline"
                                        size="icon"
                                        onClick={() => {
-                                         setSelectedTreatmentId(treatment.id);
-                                         setEditingSubTreatmentId(subTreatment.id);
-                                         setNewSubTreatment({
-                                           name: subTreatment.name,
-                                           estimated_cost: Math.round(subTreatment.estimated_cost || 0).toString(),
-                                           tooth_association: (subTreatment as any).tooth_association || "not_related"
-                                         });
-                                         setIsSubTreatmentDialogOpen(true);
-                                       }}
+                                          setSelectedTreatmentId(treatment.id);
+                                          setEditingSubTreatmentId(subTreatment.id);
+                                          setNewSubTreatment({
+                                            name: subTreatment.name,
+                                            estimated_cost_syp: Math.round(subTreatment.estimated_cost_syp || 0).toString(),
+                                            estimated_cost_usd: (subTreatment.estimated_cost_usd || 0).toString(),
+                                            tooth_association: (subTreatment as any).tooth_association || "not_related"
+                                          });
+                                          setIsSubTreatmentDialogOpen(true);
+                                        }}
                                      >
                                        <Settings2 className="h-4 w-4" />
                                      </Button>
@@ -773,7 +783,7 @@ export default function Treatments() {
         setIsSubTreatmentDialogOpen(open);
         if (!open) {
           setEditingSubTreatmentId(null);
-          setNewSubTreatment({ name: "", estimated_cost: "", tooth_association: "not_related" });
+          setNewSubTreatment({ name: "", estimated_cost_syp: "", estimated_cost_usd: "", tooth_association: "not_related" });
         }
       }}>
         <DialogContent>
@@ -790,20 +800,33 @@ export default function Treatments() {
                 required
               />
             </div>
-            <div>
-              <Label htmlFor="sub_estimated_cost">التكلفة المقدرة ($)</Label>
-              <Input
-                id="sub_estimated_cost"
-                type="text"
-                value={newSubTreatment.estimated_cost ? Math.round(Number(newSubTreatment.estimated_cost)).toLocaleString('en-US') : ''}
-                onChange={(e) => {
-                  const value = e.target.value.replace(/,/g, '');
-                  if (value === '' || /^\d+$/.test(value)) {
-                    setNewSubTreatment({ ...newSubTreatment, estimated_cost: value });
-                  }
-                }}
-                required
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="sub_estimated_cost_syp">التكلفة المقدرة (ل.س)</Label>
+                <Input
+                  id="sub_estimated_cost_syp"
+                  type="text"
+                  value={newSubTreatment.estimated_cost_syp ? Math.round(Number(newSubTreatment.estimated_cost_syp)).toLocaleString('en-US') : ''}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/,/g, '');
+                    if (value === '' || /^\d+$/.test(value)) {
+                      setNewSubTreatment({ ...newSubTreatment, estimated_cost_syp: value });
+                    }
+                  }}
+                />
+              </div>
+              <div>
+                <Label htmlFor="sub_estimated_cost_usd">التكلفة المقدرة ($)</Label>
+                <Input
+                  id="sub_estimated_cost_usd"
+                  type="text"
+                  value={newSubTreatment.estimated_cost_usd}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^\d.]/g, '');
+                    setNewSubTreatment({ ...newSubTreatment, estimated_cost_usd: value });
+                  }}
+                />
+              </div>
             </div>
             <div>
               <Label>الارتباط بالأسنان</Label>

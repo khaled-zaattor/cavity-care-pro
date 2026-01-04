@@ -223,6 +223,7 @@ export type Database = {
           amount: number
           appointment_id: string
           created_at: string
+          currency: string
           id: string
           paid_at: string
           updated_at: string
@@ -231,6 +232,7 @@ export type Database = {
           amount: number
           appointment_id: string
           created_at?: string
+          currency?: string
           id?: string
           paid_at?: string
           updated_at?: string
@@ -239,6 +241,7 @@ export type Database = {
           amount?: number
           appointment_id?: string
           created_at?: string
+          currency?: string
           id?: string
           paid_at?: string
           updated_at?: string
@@ -354,7 +357,8 @@ export type Database = {
       sub_treatments: {
         Row: {
           created_at: string
-          estimated_cost: number | null
+          estimated_cost_syp: number | null
+          estimated_cost_usd: number | null
           id: string
           name: string
           tooth_association: Database["public"]["Enums"]["tooth_association_type"]
@@ -363,7 +367,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          estimated_cost?: number | null
+          estimated_cost_syp?: number | null
+          estimated_cost_usd?: number | null
           id?: string
           name: string
           tooth_association?: Database["public"]["Enums"]["tooth_association_type"]
@@ -372,7 +377,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          estimated_cost?: number | null
+          estimated_cost_syp?: number | null
+          estimated_cost_usd?: number | null
           id?: string
           name?: string
           tooth_association?: Database["public"]["Enums"]["tooth_association_type"]
@@ -459,7 +465,8 @@ export type Database = {
       }
       treatment_records: {
         Row: {
-          actual_cost: number | null
+          actual_cost_syp: number | null
+          actual_cost_usd: number | null
           appointment_id: string
           created_at: string
           id: string
@@ -472,7 +479,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          actual_cost?: number | null
+          actual_cost_syp?: number | null
+          actual_cost_usd?: number | null
           appointment_id: string
           created_at?: string
           id?: string
@@ -485,7 +493,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          actual_cost?: number | null
+          actual_cost_syp?: number | null
+          actual_cost_usd?: number | null
           appointment_id?: string
           created_at?: string
           id?: string
