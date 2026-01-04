@@ -214,14 +214,14 @@ export default function Appointments() {
 
       const { data, error } = await query.order("scheduled_at", { ascending: false });
       if (error) throw error;
-      
+
       // Apply patient name filter (client-side since we're filtering on joined data)
       if (debouncedPatientName && data) {
-        return data.filter(apt => 
+        return data.filter(apt =>
           apt.patients?.full_name?.toLowerCase().includes(debouncedPatientName.toLowerCase())
         );
       }
-      
+
       return data;
     },
   });
@@ -230,11 +230,11 @@ export default function Appointments() {
     queryKey: ["patients", patientSearchQuery],
     queryFn: async () => {
       let query = supabase.from("patients").select("id, full_name");
-      
+
       if (patientSearchQuery) {
         query = query.ilike("full_name", `%${patientSearchQuery}%`);
       }
-      
+
       const { data, error } = await query.order("full_name");
       if (error) throw error;
       return data;
@@ -716,9 +716,9 @@ export default function Appointments() {
     setBulkDeleteStartDate("");
     setBulkDeleteEndDate("");
 
-    toast({ 
-      title: "تم الحذف بنجاح", 
-      description: `تم حذف ${appointmentsToDelete.length} موعد و ${paymentsToDelete.length} دفعة و ${treatmentsToDelete.length} سجل علاج وتصدير البيانات` 
+    toast({
+      title: "تم الحذف بنجاح",
+      description: `تم حذف ${appointmentsToDelete.length} موعد و ${paymentsToDelete.length} دفعة و ${treatmentsToDelete.length} سجل علاج وتصدير البيانات`
     });
   };
 
@@ -727,8 +727,8 @@ export default function Appointments() {
     mutationFn: async ({ appointmentId, amount }: { appointmentId: string; amount: number }) => {
       const { data, error } = await supabase
         .from("payments")
-        .insert([{ 
-          appointment_id: appointmentId, 
+        .insert([{
+          appointment_id: appointmentId,
           amount: amount,
           paid_at: new Date().toISOString()
         }])
@@ -912,13 +912,13 @@ export default function Appointments() {
       // Update treatment_notes if provided - append to existing notes
       if (resumeTreatmentNotes.trim()) {
         const existingNotes = selectedTreatmentRecord.treatment_notes || "";
-        const updatedNotes = existingNotes 
+        const updatedNotes = existingNotes
           ? `${existingNotes}\n\n--- ${format(new Date(), 'dd/MM/yyyy')} ---\n${resumeTreatmentNotes}`
           : resumeTreatmentNotes;
 
         await supabase
           .from("treatment_records")
-          .update({ 
+          .update({
             treatment_notes: updatedNotes,
             is_completed: allStepsCompleted,
             updated_at: new Date().toISOString()
@@ -928,7 +928,7 @@ export default function Appointments() {
         // Mark original treatment as completed even if no new notes
         await supabase
           .from("treatment_records")
-          .update({ 
+          .update({
             is_completed: true,
             updated_at: new Date().toISOString()
           })
@@ -962,7 +962,7 @@ export default function Appointments() {
         // Update last_appointment_id in unfinished_sub_treatments
         await supabase
           .from("unfinished_sub_treatments")
-          .update({ 
+          .update({
             last_appointment_id: selectedAppointment.id,
             updated_at: new Date().toISOString()
           })
@@ -1004,7 +1004,7 @@ export default function Appointments() {
           .order("performed_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        
+
         if (existingRecords?.treatment_notes) {
           existingNotes = existingRecords.treatment_notes;
         }
@@ -1012,7 +1012,7 @@ export default function Appointments() {
 
       // Append new notes to existing notes
       const updatedNotes = planExecution.treatment_notes.trim()
-        ? existingNotes 
+        ? existingNotes
           ? `${existingNotes}\n\n--- ${format(new Date(), 'dd/MM/yyyy')} ---\n${planExecution.treatment_notes}`
           : planExecution.treatment_notes
         : null;
@@ -1088,10 +1088,10 @@ export default function Appointments() {
       // Mark treatment plan as executed
       const { error: planError } = await supabase
         .from("treatment_plans")
-        .update({ 
-          is_executed: true, 
+        .update({
+          is_executed: true,
           executed_at: new Date().toISOString(),
-          appointment_id: selectedAppointment.id 
+          appointment_id: selectedAppointment.id
         })
         .eq("id", selectedTreatmentPlan.id);
       if (planError) throw planError;
@@ -1136,8 +1136,8 @@ export default function Appointments() {
 
   const handleExportToExcel = () => {
     if (!appointments || appointments.length === 0) {
-      toast({ 
-        title: "لا توجد بيانات", 
+      toast({
+        title: "لا توجد بيانات",
         description: "لا توجد مواعيد لتصديرها",
         variant: "destructive"
       });
@@ -1145,8 +1145,8 @@ export default function Appointments() {
     }
 
     if (selectedColumns.length === 0) {
-      toast({ 
-        title: "لا توجد أعمدة محددة", 
+      toast({
+        title: "لا توجد أعمدة محددة",
         description: "يرجى اختيار عمود واحد على الأقل للتصدير",
         variant: "destructive"
       });
@@ -1155,7 +1155,7 @@ export default function Appointments() {
 
     // Group appointments by date
     const appointmentsByDate: { [key: string]: any[] } = {};
-    
+
     appointments.forEach(apt => {
       const date = format(new Date(apt.scheduled_at), 'dd/MM/yyyy');
       if (!appointmentsByDate[date]) {
@@ -1174,10 +1174,10 @@ export default function Appointments() {
       return dateB.getTime() - dateA.getTime();
     }).forEach(date => {
       const dayAppointments = appointmentsByDate[date];
-      
+
       const exportData = dayAppointments.map(apt => {
         const row: any = {};
-        
+
         if (selectedColumns.includes('patient_name')) {
           row['اسم المريض'] = apt.patients?.full_name || '';
         }
@@ -1202,24 +1202,24 @@ export default function Appointments() {
         if (selectedColumns.includes('notes')) {
           row['ملاحظات'] = apt.notes || '';
         }
-        
+
         return row;
       });
 
       const ws = XLSX.utils.json_to_sheet(exportData);
-      
+
       // Create a safe sheet name (max 31 chars, no special chars)
       const sheetName = date.substring(0, 31).replace(/[:\\/?*\[\]]/g, '-');
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
     });
-    
+
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     saveAs(data, `appointments_${new Date().toISOString().split('T')[0]}.xlsx`);
-    
-    toast({ 
-      title: "نجح", 
-      description: `تم تصدير ${Object.keys(appointmentsByDate).length} يوم من المواعيد إلى Excel بنجاح` 
+
+    toast({
+      title: "نجح",
+      description: `تم تصدير ${Object.keys(appointmentsByDate).length} يوم من المواعيد إلى Excel بنجاح`
     });
 
     setIsExportColumnsDialogOpen(false);
@@ -1239,8 +1239,8 @@ export default function Appointments() {
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
         if (jsonData.length === 0) {
-          toast({ 
-            title: "خطأ", 
+          toast({
+            title: "خطأ",
             description: "الملف فارغ",
             variant: "destructive"
           });
@@ -1295,14 +1295,14 @@ export default function Appointments() {
         }
 
         queryClient.invalidateQueries({ queryKey: ["appointments"] });
-        
-        toast({ 
-          title: "اكتمل الاستيراد", 
+
+        toast({
+          title: "اكتمل الاستيراد",
           description: `تم استيراد ${successCount} موعد بنجاح. فشل: ${errorCount}`,
         });
       } catch (error) {
-        toast({ 
-          title: "خطأ", 
+        toast({
+          title: "خطأ",
           description: "فشل استيراد الملف",
           variant: "destructive"
         });
@@ -1320,21 +1320,21 @@ export default function Appointments() {
 
   const handleRecordTreatment = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate notes
     try {
       treatmentNotesSchema.parse({ notes: treatmentRecord.notes });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        toast({ 
-          title: "خطأ في التحقق", 
+        toast({
+          title: "خطأ في التحقق",
           description: error.errors[0].message,
-          variant: "destructive" 
+          variant: "destructive"
         });
         return;
       }
     }
-    
+
     recordTreatmentMutation.mutate(treatmentRecord);
   };
 
@@ -1342,13 +1342,13 @@ export default function Appointments() {
   const formatNumberWithCommas = (value: string) => {
     // Remove existing commas and non-numeric characters except decimal point
     const cleanValue = value.replace(/[^\d.]/g, '');
-    
+
     // Split by decimal point
     const parts = cleanValue.split('.');
-    
+
     // Add commas to the integer part
     parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    
+
     // Join back with decimal part if exists
     return parts.join('.');
   };
@@ -1408,169 +1408,169 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
 
   return (
     <div className="space-y-6">
-      
+
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle><div className="grid gap-2">
-                  
-                  <Input
-                    id="filter-patient"
-                    type="text"
-                    value={filterPatientName}
-                    onChange={(e) => setFilterPatientName(e.target.value)}
-                    placeholder="ابحث عن مريض..."
-                    className="text-xs"
-                  />
-                </div> </CardTitle>
+
+            <Input
+              id="filter-patient"
+              type="text"
+              value={filterPatientName}
+              onChange={(e) => setFilterPatientName(e.target.value)}
+              placeholder="ابحث عن مريض..."
+              className="text-xs"
+            />
+          </div> </CardTitle>
           <div className="flex justify-between items-center">
-      
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) {
-            setEditingAppointment(null);
-            setNewAppointment({ patient_id: "", doctor_id: "", scheduled_at: "", notes: "" });
-            setPatientSearchQuery("");
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="ml-2 h-4 w-4" />
-              موعد جديد
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingAppointment ? "تعديل الموعد" : "إنشاء موعد جديد"}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="patient_id">المريض</Label>
-                <Popover open={openPatientCombobox} onOpenChange={setOpenPatientCombobox}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={openPatientCombobox}
-                      className="w-full justify-between"
-                    >
-                      {newAppointment.patient_id
-                        ? (editingAppointment?.patients?.full_name || 
-                           patients?.find((patient) => patient.id === newAppointment.patient_id)?.full_name)
-                        : "ابحث عن مريض..."}
-                      <ChevronsUpDown className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="z-50 w-full p-0 bg-background" align="start">
-                    <Command shouldFilter={false}>
-                      <CommandInput 
-                        placeholder="ابحث عن مريض..." 
-                        className="h-9"
-                        value={patientSearchQuery}
-                        onValueChange={setPatientSearchQuery}
-                      />
-                      <CommandList className="max-h-72 overflow-auto">
-                        <CommandEmpty>لم يتم العثور على مريض</CommandEmpty>
-                        <CommandGroup>
-                          {patients?.map((patient) => (
-                            <CommandItem
-                              key={patient.id}
-                              value={patient.full_name}
-                              onSelect={() => {
-                                setNewAppointment({ ...newAppointment, patient_id: patient.id });
-                                setOpenPatientCombobox(false);
-                                setPatientSearchQuery("");
-                              }}
-                            >
-                              {patient.full_name}
-                              <Check
-                                className={cn(
-                                  "mr-auto h-4 w-4",
-                                  newAppointment.patient_id === patient.id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                            </CommandItem>
+
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setEditingAppointment(null);
+                setNewAppointment({ patient_id: "", doctor_id: "", scheduled_at: "", notes: "" });
+                setPatientSearchQuery("");
+              }
+            }}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="ml-2 h-4 w-4" />
+                  موعد جديد
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{editingAppointment ? "تعديل الموعد" : "إنشاء موعد جديد"}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <Label htmlFor="patient_id">المريض</Label>
+                    <Popover open={openPatientCombobox} onOpenChange={setOpenPatientCombobox}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={openPatientCombobox}
+                          className="w-full justify-between"
+                        >
+                          {newAppointment.patient_id
+                            ? (editingAppointment?.patients?.full_name ||
+                              patients?.find((patient) => patient.id === newAppointment.patient_id)?.full_name)
+                            : "ابحث عن مريض..."}
+                          <ChevronsUpDown className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="z-50 w-full p-0 bg-background" align="start">
+                        <Command shouldFilter={false}>
+                          <CommandInput
+                            placeholder="ابحث عن مريض..."
+                            className="h-9"
+                            value={patientSearchQuery}
+                            onValueChange={setPatientSearchQuery}
+                          />
+                          <CommandList className="max-h-72 overflow-auto">
+                            <CommandEmpty>لم يتم العثور على مريض</CommandEmpty>
+                            <CommandGroup>
+                              {patients?.map((patient) => (
+                                <CommandItem
+                                  key={patient.id}
+                                  value={patient.full_name}
+                                  onSelect={() => {
+                                    setNewAppointment({ ...newAppointment, patient_id: patient.id });
+                                    setOpenPatientCombobox(false);
+                                    setPatientSearchQuery("");
+                                  }}
+                                >
+                                  {patient.full_name}
+                                  <Check
+                                    className={cn(
+                                      "mr-auto h-4 w-4",
+                                      newAppointment.patient_id === patient.id ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+
+                    {/* Display future appointments for selected patient */}
+                    {newAppointment.patient_id && patientFutureAppointments && patientFutureAppointments.length > 0 && (
+                      <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                        <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">
+                          مواعيد المريض المستقبلية ({patientFutureAppointments.length}):
+                        </p>
+                        <ul className="space-y-1 max-h-32 overflow-y-auto">
+                          {patientFutureAppointments.map((apt) => (
+                            <li key={apt.id} className="text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                              <span className="font-medium">
+                                {format(new Date(apt.scheduled_at), "yyyy/MM/dd")}
+                              </span>
+                              <span>
+                                {format(new Date(apt.scheduled_at), "HH:mm")}
+                              </span>
+                              <span className="text-amber-600 dark:text-amber-400">
+                                - {apt.doctors?.full_name}
+                              </span>
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded text-[10px]",
+                                apt.status === "Scheduled" && "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+                                apt.status === "Completed" && "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+                                apt.status === "Cancelled" && "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+                              )}>
+                                {apt.status === "Scheduled" ? "مجدول" : apt.status === "Completed" ? "مكتمل" : "ملغي"}
+                              </span>
+                            </li>
                           ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                
-                {/* Display future appointments for selected patient */}
-                {newAppointment.patient_id && patientFutureAppointments && patientFutureAppointments.length > 0 && (
-                  <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
-                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">
-                      مواعيد المريض المستقبلية ({patientFutureAppointments.length}):
-                    </p>
-                    <ul className="space-y-1 max-h-32 overflow-y-auto">
-                      {patientFutureAppointments.map((apt) => (
-                        <li key={apt.id} className="text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
-                          <span className="font-medium">
-                            {format(new Date(apt.scheduled_at), "yyyy/MM/dd")}
-                          </span>
-                          <span>
-                            {format(new Date(apt.scheduled_at), "HH:mm")}
-                          </span>
-                          <span className="text-amber-600 dark:text-amber-400">
-                            - {apt.doctors?.full_name}
-                          </span>
-                          <span className={cn(
-                            "px-1.5 py-0.5 rounded text-[10px]",
-                            apt.status === "Scheduled" && "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-                            apt.status === "Completed" && "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-                            apt.status === "Cancelled" && "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
-                          )}>
-                            {apt.status === "Scheduled" ? "مجدول" : apt.status === "Completed" ? "مكتمل" : "ملغي"}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="doctor_id">الطبيب</Label>
-                <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر طبيب" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors?.map((doctor) => (
-                      <SelectItem key={doctor.id} value={doctor.id}>
-                        {doctor.full_name} - {doctor.specialty}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
-                <Input
-                  id="scheduled_at"
-                  type="datetime-local"
-                  value={newAppointment.scheduled_at}
-                  onChange={(e) => setNewAppointment({ ...newAppointment, scheduled_at: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="notes">ملاحظات</Label>
-                <Textarea
-                  id="notes"
-                  value={newAppointment.notes}
-                  onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
-                />
-              </div>
-              <Button type="submit" disabled={createAppointmentMutation.isPending || updateAppointmentMutation.isPending}>
-                {editingAppointment
-                  ? (updateAppointmentMutation.isPending ? "جاري التحديث..." : "تحديث الموعد")
-                  : (createAppointmentMutation.isPending ? "جاري الإنشاء..." : "إنشاء موعد")}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+                  <div>
+                    <Label htmlFor="doctor_id">الطبيب</Label>
+                    <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="اختر طبيب" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {doctors?.map((doctor) => (
+                          <SelectItem key={doctor.id} value={doctor.id}>
+                            {doctor.full_name} - {doctor.specialty}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
+                    <Input
+                      id="scheduled_at"
+                      type="datetime-local"
+                      value={newAppointment.scheduled_at}
+                      onChange={(e) => setNewAppointment({ ...newAppointment, scheduled_at: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="notes">ملاحظات</Label>
+                    <Textarea
+                      id="notes"
+                      value={newAppointment.notes}
+                      onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
+                    />
+                  </div>
+                  <Button type="submit" disabled={createAppointmentMutation.isPending || updateAppointmentMutation.isPending}>
+                    {editingAppointment
+                      ? (updateAppointmentMutation.isPending ? "جاري التحديث..." : "تحديث الموعد")
+                      : (createAppointmentMutation.isPending ? "جاري الإنشاء..." : "إنشاء موعد")}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
@@ -1711,217 +1711,217 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
           ) : (
             <div className="relative max-h-[calc(100vh-16rem)] overflow-y-auto">
               <table className="w-full caption-bottom text-sm">
-              <TableHeader className="sticky top-0 bg-background z-10">
-                <TableRow>
-                  {visibleTableColumns.includes('date_time') && (
-                    <TableHead className="text-right w-[180px]">التاريخ والوقت</TableHead>
-                  )}
-                  {visibleTableColumns.includes('patient_name') && (
-                    <TableHead className="text-right w-[180px]">اسم المريض</TableHead>
-                  )}
-                  {visibleTableColumns.includes('doctor_info') && (
-                    <TableHead className="hidden md:table-cell text-right">الطبيب</TableHead>
-                  )}
-                  {visibleTableColumns.includes('status') && (
-                    <TableHead className="hidden md:table-cell text-right w-[100px]">الحالة</TableHead>
-                  )}
-                  {visibleTableColumns.includes('notes') && (
-                    <TableHead className="hidden lg:table-cell text-right w-[240px]">ملاحظات</TableHead>
-                  )}
-                  {visibleTableColumns.includes('actions') && (
-                    <TableHead className="hidden lg:table-cell text-right">الإجراءات</TableHead>
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {appointments?.map((appointment) => (
-                  <TableRow 
-                    key={appointment.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => {
-                      setSelectedAppointment(appointment);
-                      setShowOptionsMenu(true);
-                    }}
-                  >
+                <TableHeader className="sticky top-0 bg-background z-10">
+                  <TableRow>
                     {visibleTableColumns.includes('date_time') && (
-                      <TableCell>
-                        {format(new Date(appointment.scheduled_at), 'dd/MM/yyyy')}
-                        {' - '}
-                        {new Date(appointment.scheduled_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                      </TableCell>
+                      <TableHead className="text-right w-[180px]">التاريخ والوقت</TableHead>
                     )}
                     {visibleTableColumns.includes('patient_name') && (
-                      <TableCell>{appointment.patients?.full_name}</TableCell>
+                      <TableHead className="text-right w-[180px]">اسم المريض</TableHead>
                     )}
                     {visibleTableColumns.includes('doctor_info') && (
-                      <TableCell className="hidden md:table-cell">
-                        {appointment.doctors?.full_name}
-                        <br />
-                        <span className="text-sm text-muted-foreground">
-                          {appointment.doctors?.specialty}
-                        </span>
-                      </TableCell>
+                      <TableHead className="hidden md:table-cell text-right">الطبيب</TableHead>
                     )}
                     {visibleTableColumns.includes('status') && (
-                      <TableCell className="hidden md:table-cell">
-                        <span className={`px-2 py-1 rounded text-xs ${appointment.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                          appointment.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                          {appointment.status === 'Completed' ? 'مكتمل' :
-                            appointment.status === 'Scheduled' ? 'مجدول' : 'ملغي'}
-                        </span>
-                      </TableCell>
+                      <TableHead className="hidden md:table-cell text-right w-[100px]">الحالة</TableHead>
                     )}
                     {visibleTableColumns.includes('notes') && (
-                      <TableCell className="hidden lg:table-cell">{appointment.notes || "-"}</TableCell>
+                      <TableHead className="hidden lg:table-cell text-right w-[240px]">ملاحظات</TableHead>
                     )}
                     {visibleTableColumns.includes('actions') && (
-                      <TableCell className="hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
-                        {isMobile ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="outline" size="sm">
-                                <MoreHorizontal className="h-4 w-4 ml-1" />
-                                خيارات
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
+                      <TableHead className="hidden lg:table-cell text-right">الإجراءات</TableHead>
+                    )}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {appointments?.map((appointment) => (
+                    <TableRow
+                      key={appointment.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => {
+                        setSelectedAppointment(appointment);
+                        setShowOptionsMenu(true);
+                      }}
+                    >
+                      {visibleTableColumns.includes('date_time') && (
+                        <TableCell>
+                          {format(new Date(appointment.scheduled_at), 'dd/MM/yyyy')}
+                          {' - '}
+                          {new Date(appointment.scheduled_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                        </TableCell>
+                      )}
+                      {visibleTableColumns.includes('patient_name') && (
+                        <TableCell>{appointment.patients?.full_name}</TableCell>
+                      )}
+                      {visibleTableColumns.includes('doctor_info') && (
+                        <TableCell className="hidden md:table-cell">
+                          {appointment.doctors?.full_name}
+                          <br />
+                          <span className="text-sm text-muted-foreground">
+                            {appointment.doctors?.specialty}
+                          </span>
+                        </TableCell>
+                      )}
+                      {visibleTableColumns.includes('status') && (
+                        <TableCell className="hidden md:table-cell">
+                          <span className={`px-2 py-1 rounded text-xs ${appointment.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                            appointment.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                            {appointment.status === 'Completed' ? 'مكتمل' :
+                              appointment.status === 'Scheduled' ? 'مجدول' : 'ملغي'}
+                          </span>
+                        </TableCell>
+                      )}
+                      {visibleTableColumns.includes('notes') && (
+                        <TableCell className="hidden lg:table-cell">{appointment.notes || "-"}</TableCell>
+                      )}
+                      {visibleTableColumns.includes('actions') && (
+                        <TableCell className="hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
+                          {isMobile ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <MoreHorizontal className="h-4 w-4 ml-1" />
+                                  خيارات
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48">
+                                {appointment.status === 'Scheduled' && (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setSelectedAppointment(appointment);
+                                        setIsRecordDialogOpen(true);
+                                      }}
+                                    >
+                                      <FileText className="h-4 w-4 ml-1" />
+                                      تسجيل علاج
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setSelectedAppointment(appointment);
+                                        setIsExecutePlanDialogOpen(true);
+                                      }}
+                                    >
+                                      <ClipboardCheck className="h-4 w-4 ml-1" />
+                                      تنفيذ خطة علاج
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setSelectedAppointment(appointment);
+                                        setIsResumeDialogOpen(true);
+                                      }}
+                                    >
+                                      <CheckSquare className="h-4 w-4 ml-1" />
+                                      استكمال علاج
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => sendWhatsAppMessage(appointment)}
+                                >
+                                  <MessageCircle className="h-4 w-4 ml-1" />
+                                  واتساب
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => window.open(`/patient-profile/${appointment.patient_id}`, '_blank')}
+                                >
+                                  عرض المريض
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setEditingAppointment(appointment);
+                                    setNewAppointment({
+                                      patient_id: appointment.patient_id,
+                                      doctor_id: appointment.doctor_id,
+                                      scheduled_at: formatDateForInput(appointment.scheduled_at),
+                                      notes: appointment.notes || "",
+                                    });
+                                    setIsDialogOpen(true);
+                                  }}
+                                >
+                                  <Pencil className="h-4 w-4 ml-1" />
+                                  تعديل
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    if (confirm("هل أنت متأكد من حذف هذا الموعد؟")) {
+                                      deleteAppointmentMutation.mutate(appointment.id);
+                                    }
+                                  }}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4 ml-1" />
+                                  حذف
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <div className="flex space-x-2">
                               {appointment.status === 'Scheduled' && (
                                 <>
-                                  <DropdownMenuItem
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => {
                                       setSelectedAppointment(appointment);
                                       setIsRecordDialogOpen(true);
                                     }}
                                   >
-                                    <FileText className="h-4 w-4 ml-1" />
+
                                     تسجيل علاج
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => {
                                       setSelectedAppointment(appointment);
                                       setIsExecutePlanDialogOpen(true);
                                     }}
+                                    className="text-blue-600 hover:text-blue-700"
                                   >
-                                    <ClipboardCheck className="h-4 w-4 ml-1" />
+
                                     تنفيذ خطة علاج
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => {
                                       setSelectedAppointment(appointment);
                                       setIsResumeDialogOpen(true);
                                     }}
+                                    className="text-orange-600 hover:text-orange-700"
                                   >
-                                    <CheckSquare className="h-4 w-4 ml-1" />
+
                                     استكمال علاج
-                                  </DropdownMenuItem>
+                                  </Button>
                                 </>
                               )}
-                              <DropdownMenuItem
+                              <Button
+                                variant="outline"
+                                size="sm"
                                 onClick={() => sendWhatsAppMessage(appointment)}
+                                className="text-green-600 hover:text-green-700"
                               >
                                 <MessageCircle className="h-4 w-4 ml-1" />
-                                واتساب
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => navigate(`/patient-profile/${appointment.patient_id}`)}
+
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(`/patient-profile/${appointment.patient_id}`, '_blank')}
                               >
                                 عرض المريض
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setEditingAppointment(appointment);
-                                  setNewAppointment({
-                                    patient_id: appointment.patient_id,
-                                    doctor_id: appointment.doctor_id,
-                                    scheduled_at: formatDateForInput(appointment.scheduled_at),
-                                    notes: appointment.notes || "",
-                                  });
-                                  setIsDialogOpen(true);
-                                }}
-                              >
-                                <Pencil className="h-4 w-4 ml-1" />
-                                تعديل
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  if (confirm("هل أنت متأكد من حذف هذا الموعد؟")) {
-                                    deleteAppointmentMutation.mutate(appointment.id);
-                                  }
-                                }}
-                                className="text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4 ml-1" />
-                                حذف
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : (
-                          <div className="flex space-x-2">
-                            {appointment.status === 'Scheduled' && (
-                              <>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedAppointment(appointment);
-                                    setIsRecordDialogOpen(true);
-                                  }}
-                                >
-                                 
-                                  تسجيل علاج
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedAppointment(appointment);
-                                    setIsExecutePlanDialogOpen(true);
-                                  }}
-                                  className="text-blue-600 hover:text-blue-700"
-                                >
-                                  
-                                  تنفيذ خطة علاج
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedAppointment(appointment);
-                                    setIsResumeDialogOpen(true);
-                                  }}
-                                  className="text-orange-600 hover:text-orange-700"
-                                >
-                                  
-                                  استكمال علاج
-                                </Button>
-                              </>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => sendWhatsAppMessage(appointment)}
-                              className="text-green-600 hover:text-green-700"
-                            >
-                              <MessageCircle className="h-4 w-4 ml-1" />
-                              
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => navigate(`/patient-profile/${appointment.patient_id}`)}
-                            >
-                              عرض المريض
-                            </Button>
-                          </div>
-                        )}
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </table>
+                              </Button>
+                            </div>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </table>
             </div>
           )}
         </CardContent>
@@ -2021,240 +2021,240 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                           </RadioGroup>
                         </div>
 
-                   {teethType === "adult" ? (
-                    <>
-                      {/* أسنان البالغين */}
-                      <div className="mb-2">
-                        <div className="flex gap-0.5 justify-center items-center">
-                          {[28, 27, 26, 25, 24, 23, 22, 21].map((toothNum) => (
-                            <button
-                              key={toothNum}
-                              type="button"
-                              onClick={() => {
-                                const toothStr = toothNum.toString();
-                                if (isSingleToothOnly) {
-                                  // For single tooth, replace selection
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
-                                } else {
-                                  // For multiple teeth, toggle selection
-                                  const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
-                                    ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
-                                    : [...treatmentRecord.tooth_numbers, toothStr];
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
-                                }
-                              }}
-                              className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background hover:bg-muted border-border'
-                                }`}
-                            >
-                              {toothNum}
-                            </button>
-                          ))}
-                          <div className="w-px h-[25px] bg-border mx-0.5" />
-                          {[11, 12, 13, 14, 15, 16, 17, 18].map((toothNum) => (
-                            <button
-                              key={toothNum}
-                              type="button"
-                              onClick={() => {
-                                const toothStr = toothNum.toString();
-                                if (isSingleToothOnly) {
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
-                                } else {
-                                  const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
-                                    ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
-                                    : [...treatmentRecord.tooth_numbers, toothStr];
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
-                                }
-                              }}
-                              className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background hover:bg-muted border-border'
-                                }`}
-                            >
-                              {toothNum}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                        {teethType === "adult" ? (
+                          <>
+                            {/* أسنان البالغين */}
+                            <div className="mb-2">
+                              <div className="flex gap-0.5 justify-center items-center">
+                                {[28, 27, 26, 25, 24, 23, 22, 21].map((toothNum) => (
+                                  <button
+                                    key={toothNum}
+                                    type="button"
+                                    onClick={() => {
+                                      const toothStr = toothNum.toString();
+                                      if (isSingleToothOnly) {
+                                        // For single tooth, replace selection
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
+                                      } else {
+                                        // For multiple teeth, toggle selection
+                                        const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
+                                          ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
+                                          : [...treatmentRecord.tooth_numbers, toothStr];
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
+                                      }
+                                    }}
+                                    className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background hover:bg-muted border-border'
+                                      }`}
+                                  >
+                                    {toothNum}
+                                  </button>
+                                ))}
+                                <div className="w-px h-[25px] bg-border mx-0.5" />
+                                {[11, 12, 13, 14, 15, 16, 17, 18].map((toothNum) => (
+                                  <button
+                                    key={toothNum}
+                                    type="button"
+                                    onClick={() => {
+                                      const toothStr = toothNum.toString();
+                                      if (isSingleToothOnly) {
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
+                                      } else {
+                                        const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
+                                          ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
+                                          : [...treatmentRecord.tooth_numbers, toothStr];
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
+                                      }
+                                    }}
+                                    className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background hover:bg-muted border-border'
+                                      }`}
+                                  >
+                                    {toothNum}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
 
-                      <div className="h-px bg-border my-2" />
+                            <div className="h-px bg-border my-2" />
 
-                      <div>
-                        <div className="flex gap-0.5 justify-center items-center">
-                          {[38, 37, 36, 35, 34, 33, 32, 31].map((toothNum) => (
-                            <button
-                              key={toothNum}
-                              type="button"
-                              onClick={() => {
-                                const toothStr = toothNum.toString();
-                                if (isSingleToothOnly) {
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
-                                } else {
-                                  const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
-                                    ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
-                                    : [...treatmentRecord.tooth_numbers, toothStr];
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
-                                }
-                              }}
-                              className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background hover:bg-muted border-border'
-                                }`}
-                            >
-                              {toothNum}
-                            </button>
-                          ))}
-                          <div className="w-px h-[25px] bg-border mx-0.5" />
-                          {[41, 42, 43, 44, 45, 46, 47, 48].map((toothNum) => (
-                            <button
-                              key={toothNum}
-                              type="button"
-                              onClick={() => {
-                                const toothStr = toothNum.toString();
-                                if (isSingleToothOnly) {
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
-                                } else {
-                                  const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
-                                    ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
-                                    : [...treatmentRecord.tooth_numbers, toothStr];
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
-                                }
-                              }}
-                              className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background hover:bg-muted border-border'
-                                }`}
-                            >
-                              {toothNum}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {/* أسنان الأطفال */}
-                      <div className="mb-2">
-                        <div className="flex gap-0.5 justify-center items-center">
-                          {[65, 64, 63, 62, 61].map((toothNum) => (
-                            <button
-                              key={toothNum}
-                              type="button"
-                              onClick={() => {
-                                const toothStr = toothNum.toString();
-                                if (isSingleToothOnly) {
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
-                                } else {
-                                  const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
-                                    ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
-                                    : [...treatmentRecord.tooth_numbers, toothStr];
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
-                                }
-                              }}
-                              className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background hover:bg-muted border-border'
-                                }`}
-                            >
-                              {toothNum}
-                            </button>
-                          ))}
-                          <div className="w-px h-[25px] bg-border mx-0.5" />
-                          {[51, 52, 53, 54, 55].map((toothNum) => (
-                            <button
-                              key={toothNum}
-                              type="button"
-                              onClick={() => {
-                                const toothStr = toothNum.toString();
-                                if (isSingleToothOnly) {
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
-                                } else {
-                                  const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
-                                    ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
-                                    : [...treatmentRecord.tooth_numbers, toothStr];
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
-                                }
-                              }}
-                              className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background hover:bg-muted border-border'
-                                }`}
-                            >
-                              {toothNum}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                            <div>
+                              <div className="flex gap-0.5 justify-center items-center">
+                                {[38, 37, 36, 35, 34, 33, 32, 31].map((toothNum) => (
+                                  <button
+                                    key={toothNum}
+                                    type="button"
+                                    onClick={() => {
+                                      const toothStr = toothNum.toString();
+                                      if (isSingleToothOnly) {
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
+                                      } else {
+                                        const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
+                                          ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
+                                          : [...treatmentRecord.tooth_numbers, toothStr];
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
+                                      }
+                                    }}
+                                    className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background hover:bg-muted border-border'
+                                      }`}
+                                  >
+                                    {toothNum}
+                                  </button>
+                                ))}
+                                <div className="w-px h-[25px] bg-border mx-0.5" />
+                                {[41, 42, 43, 44, 45, 46, 47, 48].map((toothNum) => (
+                                  <button
+                                    key={toothNum}
+                                    type="button"
+                                    onClick={() => {
+                                      const toothStr = toothNum.toString();
+                                      if (isSingleToothOnly) {
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
+                                      } else {
+                                        const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
+                                          ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
+                                          : [...treatmentRecord.tooth_numbers, toothStr];
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
+                                      }
+                                    }}
+                                    className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background hover:bg-muted border-border'
+                                      }`}
+                                  >
+                                    {toothNum}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {/* أسنان الأطفال */}
+                            <div className="mb-2">
+                              <div className="flex gap-0.5 justify-center items-center">
+                                {[65, 64, 63, 62, 61].map((toothNum) => (
+                                  <button
+                                    key={toothNum}
+                                    type="button"
+                                    onClick={() => {
+                                      const toothStr = toothNum.toString();
+                                      if (isSingleToothOnly) {
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
+                                      } else {
+                                        const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
+                                          ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
+                                          : [...treatmentRecord.tooth_numbers, toothStr];
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
+                                      }
+                                    }}
+                                    className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background hover:bg-muted border-border'
+                                      }`}
+                                  >
+                                    {toothNum}
+                                  </button>
+                                ))}
+                                <div className="w-px h-[25px] bg-border mx-0.5" />
+                                {[51, 52, 53, 54, 55].map((toothNum) => (
+                                  <button
+                                    key={toothNum}
+                                    type="button"
+                                    onClick={() => {
+                                      const toothStr = toothNum.toString();
+                                      if (isSingleToothOnly) {
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
+                                      } else {
+                                        const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
+                                          ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
+                                          : [...treatmentRecord.tooth_numbers, toothStr];
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
+                                      }
+                                    }}
+                                    className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background hover:bg-muted border-border'
+                                      }`}
+                                  >
+                                    {toothNum}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
 
-                      <div className="h-px bg-border my-2" />
+                            <div className="h-px bg-border my-2" />
 
-                      <div>
-                        <div className="flex gap-0.5 justify-center items-center">
-                          {[75, 74, 73, 72, 71].map((toothNum) => (
-                            <button
-                              key={toothNum}
-                              type="button"
-                              onClick={() => {
-                                const toothStr = toothNum.toString();
-                                if (isSingleToothOnly) {
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
-                                } else {
-                                  const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
-                                    ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
-                                    : [...treatmentRecord.tooth_numbers, toothStr];
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
-                                }
-                              }}
-                              className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background hover:bg-muted border-border'
-                                }`}
-                            >
-                              {toothNum}
-                            </button>
-                          ))}
-                          <div className="w-px h-[25px] bg-border mx-0.5" />
-                          {[81, 82, 83, 84, 85].map((toothNum) => (
-                            <button
-                              key={toothNum}
-                              type="button"
-                              onClick={() => {
-                                const toothStr = toothNum.toString();
-                                if (isSingleToothOnly) {
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
-                                } else {
-                                  const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
-                                    ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
-                                    : [...treatmentRecord.tooth_numbers, toothStr];
-                                  setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
-                                }
-                              }}
-                              className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background hover:bg-muted border-border'
-                                }`}
-                            >
-                              {toothNum}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
+                            <div>
+                              <div className="flex gap-0.5 justify-center items-center">
+                                {[75, 74, 73, 72, 71].map((toothNum) => (
+                                  <button
+                                    key={toothNum}
+                                    type="button"
+                                    onClick={() => {
+                                      const toothStr = toothNum.toString();
+                                      if (isSingleToothOnly) {
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
+                                      } else {
+                                        const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
+                                          ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
+                                          : [...treatmentRecord.tooth_numbers, toothStr];
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
+                                      }
+                                    }}
+                                    className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background hover:bg-muted border-border'
+                                      }`}
+                                  >
+                                    {toothNum}
+                                  </button>
+                                ))}
+                                <div className="w-px h-[25px] bg-border mx-0.5" />
+                                {[81, 82, 83, 84, 85].map((toothNum) => (
+                                  <button
+                                    key={toothNum}
+                                    type="button"
+                                    onClick={() => {
+                                      const toothStr = toothNum.toString();
+                                      if (isSingleToothOnly) {
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: [toothStr] });
+                                      } else {
+                                        const newTeeth = treatmentRecord.tooth_numbers.includes(toothStr)
+                                          ? treatmentRecord.tooth_numbers.filter(t => t !== toothStr)
+                                          : [...treatmentRecord.tooth_numbers, toothStr];
+                                        setTreatmentRecord({ ...treatmentRecord, tooth_numbers: newTeeth });
+                                      }
+                                    }}
+                                    className={`h-[25px] w-[25px] text-xs font-medium border rounded transition-colors ${treatmentRecord.tooth_numbers.includes(toothNum.toString())
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background hover:bg-muted border-border'
+                                      }`}
+                                  >
+                                    {toothNum}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        )}
 
-                  {treatmentRecord.tooth_numbers.length > 0 && (
-                    <div className="mt-2 text-center text-xs text-primary">
-                      الأسنان المحددة: {treatmentRecord.tooth_numbers.sort((a, b) => parseInt(a) - parseInt(b)).join(", ")}
-                    </div>
-                  )}
+                        {treatmentRecord.tooth_numbers.length > 0 && (
+                          <div className="mt-2 text-center text-xs text-primary">
+                            الأسنان المحددة: {treatmentRecord.tooth_numbers.sort((a, b) => parseInt(a) - parseInt(b)).join(", ")}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                   <div className="space-y-3">
                     <div>
                       <Label htmlFor="actual_cost">التكلفة الحقيقية</Label>
-                       <Input
+                      <Input
                         id="actual_cost"
                         type="text"
                         value={treatmentRecord.actual_cost ? formatNumberWithCommas(treatmentRecord.actual_cost) : ''}
@@ -2657,9 +2657,8 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     {planTreatmentSteps.map((step: any) => (
                       <div
                         key={step.id}
-                        className={`flex items-start space-x-2 p-2 border rounded transition-colors ${
-                          selectedSteps.includes(step.id) ? 'bg-blue-50 border-blue-200' : 'bg-card'
-                        }`}
+                        className={`flex items-start space-x-2 p-2 border rounded transition-colors ${selectedSteps.includes(step.id) ? 'bg-blue-50 border-blue-200' : 'bg-card'
+                          }`}
                       >
                         <Checkbox
                           id={`plan-step-${step.id}`}
@@ -2857,7 +2856,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   variant="outline"
                   className="justify-start"
                   onClick={() => {
-                    navigate(`/patient-profile/${selectedAppointment.patient_id}`);
+                    window.open(`/patient-profile/${selectedAppointment.patient_id}`, '_blank');
                     setShowOptionsMenu(false);
                   }}
                 >
@@ -2930,7 +2929,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 </div>
               ))}
             </div>
-            
+
             <div className="flex justify-between gap-2 pt-4">
               <Button
                 variant="outline"
@@ -2994,7 +2993,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 </div>
               ))}
             </div>
-            
+
             <div className="flex justify-between gap-2 pt-4">
               <Button
                 variant="outline"
@@ -3064,8 +3063,8 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
               }}>
                 إلغاء
               </Button>
-              <Button 
-                variant="destructive" 
+              <Button
+                variant="destructive"
                 onClick={previewBulkDelete}
                 disabled={!bulkDeleteStartDate || !bulkDeleteEndDate}
               >
@@ -3102,7 +3101,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       <div className="flex justify-between border-t pt-2 mt-2">
                         <span>إجمالي المبالغ:</span>
                         <span className="font-bold">
-                          {bulkDeletePreview.payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0).toLocaleString()} 
+                          {bulkDeletePreview.payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0).toLocaleString()}
                         </span>
                       </div>
                     )}
