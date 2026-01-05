@@ -730,12 +730,13 @@ export default function Appointments() {
 
   // Mutation to add payment
   const addPaymentMutation = useMutation({
-    mutationFn: async ({ appointmentId, amount }: { appointmentId: string; amount: number }) => {
+    mutationFn: async ({ appointmentId, amount, currency }: { appointmentId: string; amount: number; currency: string }) => {
       const { data, error } = await supabase
         .from("payments")
         .insert([{
           appointment_id: appointmentId,
           amount: amount,
+          currency: currency,
           paid_at: new Date().toISOString()
         }])
         .select();
@@ -746,6 +747,7 @@ export default function Appointments() {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       setIsAddPaymentDialogOpen(false);
       setNewPaymentAmount("");
+      setNewPaymentCurrency("SYP");
       toast({ title: "نجح", description: "تم تسجيل الدفعة بنجاح" });
     },
     onError: () => {
@@ -761,7 +763,7 @@ export default function Appointments() {
       toast({ title: "خطأ", description: "يرجى إدخال مبلغ صحيح", variant: "destructive" });
       return;
     }
-    addPaymentMutation.mutate({ appointmentId: selectedAppointment.id, amount });
+    addPaymentMutation.mutate({ appointmentId: selectedAppointment.id, amount, currency: newPaymentCurrency });
   };
 
   const recordTreatmentMutation = useMutation({
@@ -3215,19 +3217,31 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
               <form onSubmit={handleAddPayment} className="space-y-4">
                 <div>
                   <Label htmlFor="payment-amount">مبلغ الدفعة</Label>
-                  <Input
-                    id="payment-amount"
-                    type="text"
-                    value={newPaymentAmount ? parseInt(newPaymentAmount.replace(/,/g, '')).toLocaleString('en-US') : ''}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/,/g, '');
-                      if (value === '' || /^\d+$/.test(value)) {
-                        setNewPaymentAmount(value);
-                      }
-                    }}
-                    placeholder="أدخل المبلغ"
-                    required
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="payment-amount"
+                      type="text"
+                      className="flex-1"
+                      value={newPaymentAmount ? parseInt(newPaymentAmount.replace(/,/g, '')).toLocaleString('en-US') : ''}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/,/g, '');
+                        if (value === '' || /^\d+$/.test(value)) {
+                          setNewPaymentAmount(value);
+                        }
+                      }}
+                      placeholder="أدخل المبلغ"
+                      required
+                    />
+                    <Select value={newPaymentCurrency} onValueChange={setNewPaymentCurrency}>
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SYP">ل.س</SelectItem>
+                        <SelectItem value="USD">$</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="flex gap-2 justify-end">
                   <Button
@@ -3236,6 +3250,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     onClick={() => {
                       setIsAddPaymentDialogOpen(false);
                       setNewPaymentAmount("");
+                      setNewPaymentCurrency("SYP");
                     }}
                   >
                     إلغاء
