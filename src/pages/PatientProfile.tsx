@@ -54,6 +54,7 @@ export default function PatientProfile() {
 
   const [newPayment, setNewPayment] = useState({
     amount: "",
+    currency: "SYP" as "SYP" | "USD",
   });
 
   // Fetch patient data
@@ -332,7 +333,11 @@ export default function PatientProfile() {
     mutationFn: async (payment: typeof newPayment) => {
       const { data, error } = await supabase
         .from("payments")
-        .insert([{ ...payment, appointment_id: selectedAppointmentId, amount: parseFloat(payment.amount) }])
+        .insert([{ 
+          appointment_id: selectedAppointmentId, 
+          amount: parseFloat(payment.amount),
+          currency: payment.currency
+        }])
         .select();
       if (error) throw error;
       return data;
@@ -342,7 +347,7 @@ export default function PatientProfile() {
       queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
       queryClient.invalidateQueries({ queryKey: ["appointment-payments", selectedAppointmentId] });
       setIsPaymentDialogOpen(false);
-      setNewPayment({ amount: "" });
+      setNewPayment({ amount: "", currency: "SYP" });
       toast({ title: "نجح", description: "تم تسجيل الدفعة بنجاح" });
     },
   });
@@ -1199,18 +1204,33 @@ export default function PatientProfile() {
           <form onSubmit={handleRecordPayment} className="space-y-4">
             <div>
               <Label htmlFor="amount">مبلغ الدفعة</Label>
-              <Input
-                id="amount"
-                type="text"
-                value={newPayment.amount ? Math.round(Number(newPayment.amount)).toLocaleString('en-US') : ''}
-                onChange={(e) => {
-                  const value = e.target.value.replace(/,/g, '');
-                  if (value === '' || /^\d+$/.test(value)) {
-                    setNewPayment({ ...newPayment, amount: value });
-                  }
-                }}
-                required
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="amount"
+                  type="text"
+                  className="flex-1"
+                  value={newPayment.amount ? Math.round(Number(newPayment.amount)).toLocaleString('en-US') : ''}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/,/g, '');
+                    if (value === '' || /^\d+$/.test(value)) {
+                      setNewPayment({ ...newPayment, amount: value });
+                    }
+                  }}
+                  required
+                />
+                <Select 
+                  value={newPayment.currency} 
+                  onValueChange={(value: "SYP" | "USD") => setNewPayment({ ...newPayment, currency: value })}
+                >
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SYP">ل.س</SelectItem>
+                    <SelectItem value="USD">$</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <Button type="submit" disabled={createPaymentMutation.isPending}>
               {createPaymentMutation.isPending ? "جاري التسجيل..." : "تسجيل الدفعة"}
