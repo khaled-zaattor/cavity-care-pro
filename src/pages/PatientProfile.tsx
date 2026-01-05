@@ -1252,6 +1252,7 @@ export default function PatientProfile() {
                   <TableRow>
                     <TableHead className="text-right">تاريخ الدفع</TableHead>
                     <TableHead className="text-right">المبلغ الحالي</TableHead>
+                    <TableHead className="text-right">العملة</TableHead>
                     <TableHead className="text-right">المبلغ الجديد</TableHead>
                     <TableHead className="text-right">إجراء</TableHead>
                   </TableRow>
@@ -1263,7 +1264,12 @@ export default function PatientProfile() {
                         {format(new Date(payment.paid_at), 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell className="font-semibold">
-                        {Math.round(payment.amount).toLocaleString('en-US')}
+                        {payment.currency === 'USD' ? '$' : ''}{Math.round(payment.amount).toLocaleString('en-US')}{payment.currency !== 'USD' ? ' ل.س' : ''}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${payment.currency === 'USD' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                          {payment.currency === 'USD' ? 'دولار' : 'ليرة'}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <Input
@@ -1540,9 +1546,15 @@ export default function PatientProfile() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                     <div>
                       <div className="text-2xl font-bold text-green-600">
-                        {Math.round(allPayments.reduce((sum, payment) => sum + Number(payment.amount), 0)).toLocaleString('en-US')}
+                        {Math.round(allPayments.filter(p => p.currency === 'SYP' || !p.currency).reduce((sum, payment) => sum + Number(payment.amount), 0)).toLocaleString('en-US')} ل.س
                       </div>
-                      <p className="text-sm text-muted-foreground">إجمالي المدفوعات</p>
+                      <p className="text-sm text-muted-foreground">إجمالي المدفوعات بالليرة</p>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-green-600">
+                        ${Math.round(allPayments.filter(p => p.currency === 'USD').reduce((sum, payment) => sum + Number(payment.amount), 0)).toLocaleString('en-US')}
+                      </div>
+                      <p className="text-sm text-muted-foreground">إجمالي المدفوعات بالدولار</p>
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-blue-600">
@@ -1580,6 +1592,7 @@ export default function PatientProfile() {
                     <TableRow>
                       <TableHead className="text-right">تاريخ الدفع</TableHead>
                       <TableHead className="text-right">المبلغ</TableHead>
+                      <TableHead className="text-right">العملة</TableHead>
                       <TableHead className="text-right">تاريخ الموعد</TableHead>
                       <TableHead className="text-right">الطبيب</TableHead>
                       <TableHead className="text-right">ملاحظات</TableHead>
@@ -1592,7 +1605,12 @@ export default function PatientProfile() {
                           {format(new Date(payment.paid_at), 'dd/MM/yyyy')}
                         </TableCell>
                         <TableCell className="font-semibold text-green-600">
-                          {Math.round(payment.amount).toLocaleString('en-US')}
+                          {payment.currency === 'USD' ? '$' : ''}{Math.round(payment.amount).toLocaleString('en-US')}{payment.currency !== 'USD' ? ' ل.س' : ''}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${payment.currency === 'USD' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                            {payment.currency === 'USD' ? 'دولار' : 'ليرة سورية'}
+                          </span>
                         </TableCell>
                         <TableCell>
                           {format(new Date(payment.appointments?.scheduled_at), 'dd/MM/yyyy')}
