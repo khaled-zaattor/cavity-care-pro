@@ -1331,7 +1331,8 @@ export default function PatientProfile() {
                     <TableHead className="text-right">العلاج الفرعي</TableHead>
                     <TableHead className="text-right">رقم السن</TableHead>
                     <TableHead className="text-right">الخطوات المنفذة</TableHead>
-                    <TableHead className="text-right">التكلفة</TableHead>
+                    <TableHead className="text-right">التكلفة (ل.س)</TableHead>
+                    <TableHead className="text-right">التكلفة ($)</TableHead>
                     <TableHead className="text-right">الحالة</TableHead>
                     <TableHead className="text-right">الطبيب</TableHead>
                     <TableHead className="text-right">ملاحظة العلاج</TableHead>
@@ -1360,7 +1361,12 @@ export default function PatientProfile() {
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell>{Math.round(record.actual_cost || 0).toLocaleString('en-US')}</TableCell>
+                      <TableCell className="font-semibold">
+                        {record.actual_cost_syp ? `${Math.round(record.actual_cost_syp).toLocaleString('en-US')} ل.س` : '-'}
+                      </TableCell>
+                      <TableCell className="font-semibold text-blue-600">
+                        {record.actual_cost_usd ? `$${Math.round(record.actual_cost_usd).toLocaleString('en-US')}` : '-'}
+                      </TableCell>
                       <TableCell>
                         <span className={`px-2 py-1 rounded text-xs ${
                           record.is_completed 
