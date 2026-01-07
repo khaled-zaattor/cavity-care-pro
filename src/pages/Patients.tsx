@@ -165,9 +165,33 @@ export default function Patients() {
         for (const row of rows) {
           if (!row[0] || !row[1] || !row[2]) continue; // تأكد من وجود الاسم وتاريخ الميلاد والهاتف
           
+          // تحويل التاريخ من صيغة dd/mm/yyyy إلى yyyy-mm-dd
+          let dateOfBirth = '';
+          if (row[1]) {
+            const dateValue = row[1].toString().trim();
+            // التحقق إذا كان التاريخ بصيغة dd/mm/yyyy أو dd-mm-yyyy
+            const dateMatch = dateValue.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+            if (dateMatch) {
+              const day = dateMatch[1].padStart(2, '0');
+              const month = dateMatch[2].padStart(2, '0');
+              const year = dateMatch[3];
+              dateOfBirth = `${year}-${month}-${day}`;
+            } else {
+              // محاولة تحويل من Excel serial number أو صيغ أخرى
+              try {
+                const date = new Date(dateValue);
+                if (!isNaN(date.getTime())) {
+                  dateOfBirth = date.toISOString().split('T')[0];
+                }
+              } catch {
+                dateOfBirth = '';
+              }
+            }
+          }
+          
           const patientData = {
             full_name: row[0]?.toString().trim() || '',
-            date_of_birth: row[1] ? new Date(row[1]).toISOString().split('T')[0] : '',
+            date_of_birth: dateOfBirth,
             phone_number: row[2]?.toString().trim() || '',
             address: row[3]?.toString() === '-' ? '' : row[3]?.toString() || '',
             job: row[4]?.toString() === '-' ? '' : row[4]?.toString() || '',
