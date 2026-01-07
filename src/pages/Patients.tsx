@@ -199,16 +199,14 @@ export default function Patients() {
           throw fetchError;
         }
         
-        // إنشاء مجموعة من المرضى الموجودين (الاسم + رقم الهاتف)
-        const existingSet = new Set(
-          (existingPatients || []).map(p => 
-            `${p.full_name.toLowerCase().trim()}|${p.phone_number.trim()}`
-          )
+        // إنشاء مجموعة من أسماء المرضى الموجودين فقط
+        const existingNamesSet = new Set(
+          (existingPatients || []).map(p => p.full_name.toLowerCase().trim())
         );
         
-        // تصفية المرضى الجدد فقط
+        // تصفية المرضى الجدد فقط (التحقق من الاسم فقط - رقم الهاتف يمكن أن يتكرر)
         const newPatients = validPatients.filter(p => 
-          !existingSet.has(`${p.full_name.toLowerCase().trim()}|${p.phone_number.trim()}`)
+          !existingNamesSet.has(p.full_name.toLowerCase().trim())
         );
         
         const skippedCount = validPatients.length - newPatients.length;
@@ -216,7 +214,7 @@ export default function Patients() {
         if (newPatients.length === 0) {
           toast({
             title: "تنبيه",
-            description: `تم تخطي ${skippedCount} مريض لأنهم موجودون مسبقاً (نفس الاسم ورقم الهاتف)`,
+            description: `تم تخطي ${skippedCount} مريض لأنهم موجودون مسبقاً (نفس الاسم)`,
           });
           setImportingFile(false);
           return;
