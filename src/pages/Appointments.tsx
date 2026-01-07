@@ -2455,7 +2455,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                             <h4 className="font-semibold">{treatment.treatment_name}</h4>
                             <p className="text-sm text-muted-foreground">{treatment.sub_treatment_name}</p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              السن: {treatment.tooth_number} | التكلفة: {Math.round(treatment.actual_cost_syp || 0).toLocaleString('en-US')} ل.س
+                              السن: {treatment.tooth_number} | التكلفة: {Math.round(treatment.actual_cost_syp || 0).toLocaleString('en-US')} ل.س - {Math.round(treatment.actual_cost_usd || 0).toLocaleString('en-US')} $
                             </p>
                           </div>
                           <div className="text-xs text-orange-600 font-medium">
