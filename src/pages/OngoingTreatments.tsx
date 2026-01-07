@@ -64,7 +64,7 @@ export default function OngoingTreatments() {
     filterEndDate
   );
 
-  // Fetch treatment records with all related data and executed steps
+  // Fetch treatment records with all related data
   const { data: treatmentRecords, isLoading } = useQuery({
     queryKey: ["ongoing-treatments", filterDoctor, filterStatus, filterStartDate, filterEndDate, debouncedPatientName],
     queryFn: async () => {
@@ -131,31 +131,47 @@ export default function OngoingTreatments() {
         );
       }
 
-      // For each treatment record, fetch the executed steps for this specific sub_treatment
-      // Same logic as PatientProfile page
-      const recordsWithSteps = await Promise.all(
-        filteredData.map(async (record) => {
-          const { data: steps, error: stepsError } = await supabase
-            .from("appointment_treatment_steps")
-            .select(`
-              *,
-              sub_treatment_step_id,
-              sub_treatment_steps!inner (
-                step_name,
-                sub_treatment_id
-              )
-            `)
-            .eq("appointment_id", record.appointments.id)
-            .eq("sub_treatment_steps.sub_treatment_id", record.sub_treatment_id);
+      if (filteredData.length === 0) {
+        return [];
+      }
 
-          if (stepsError) {
-            console.error("Error fetching steps:", stepsError);
-            return { ...record, executed_steps: [] };
+      // OPTIMIZATION: Fetch all executed steps in a single query instead of N+1 queries
+      const appointmentIds = [...new Set(filteredData.map(r => r.appointments.id))];
+      const subTreatmentIds = [...new Set(filteredData.map(r => r.sub_treatment_id))];
+
+      const { data: allSteps, error: stepsError } = await supabase
+        .from("appointment_treatment_steps")
+        .select(`
+          *,
+          sub_treatment_steps (
+            step_name,
+            sub_treatment_id
+          )
+        `)
+        .in("appointment_id", appointmentIds);
+
+      if (stepsError) {
+        console.error("Error fetching steps:", stepsError);
+      }
+
+      // Create a map for quick lookup: key = "appointmentId_subTreatmentId"
+      const stepsMap = new Map<string, any[]>();
+      (allSteps || []).forEach((step) => {
+        const subTreatmentId = step.sub_treatment_steps?.sub_treatment_id;
+        if (subTreatmentId) {
+          const key = `${step.appointment_id}_${subTreatmentId}`;
+          if (!stepsMap.has(key)) {
+            stepsMap.set(key, []);
           }
+          stepsMap.get(key)!.push(step);
+        }
+      });
 
-          return { ...record, executed_steps: steps || [] };
-        })
-      );
+      // Attach executed steps to each record using the map
+      const recordsWithSteps = filteredData.map((record) => {
+        const key = `${record.appointments.id}_${record.sub_treatment_id}`;
+        return { ...record, executed_steps: stepsMap.get(key) || [] };
+      });
 
       return recordsWithSteps;
     },
