@@ -461,10 +461,18 @@ export default function Appointments() {
   });
 
   // Query to get completed steps for the selected treatment (across ALL related appointments)
+  // NOTE: include selectedAppointment.id in the key so switching appointments for the same patient refetches.
   const { data: resumeCompletedSteps } = useQuery({
-    queryKey: ["resume-completed-steps", selectedAppointment?.patient_id, selectedTreatmentRecord?.treatment_id, selectedTreatmentRecord?.sub_treatment_id, selectedTreatmentRecord?.tooth_number],
+    queryKey: [
+      "resume-completed-steps",
+      selectedAppointment?.id,
+      selectedAppointment?.patient_id,
+      selectedTreatmentRecord?.treatment_id,
+      selectedTreatmentRecord?.sub_treatment_id,
+      selectedTreatmentRecord?.tooth_number,
+    ],
     queryFn: async () => {
-      if (!selectedAppointment?.patient_id || !selectedTreatmentRecord?.treatment_id || !selectedTreatmentRecord?.sub_treatment_id) return [];
+      if (!selectedAppointment?.patient_id || !selectedAppointment?.id || !selectedTreatmentRecord?.treatment_id || !selectedTreatmentRecord?.sub_treatment_id) return [];
 
       // 1) Find all appointments where this same treatment/sub-treatment/tooth was performed for this patient
       const { data: relatedRecords, error: relatedError } = await supabase
@@ -496,7 +504,11 @@ export default function Appointments() {
       if (error) throw error;
       return data || [];
     },
-    enabled: !!selectedAppointment?.patient_id && !!selectedTreatmentRecord?.treatment_id && !!selectedTreatmentRecord?.sub_treatment_id,
+    enabled:
+      !!selectedAppointment?.patient_id &&
+      !!selectedAppointment?.id &&
+      !!selectedTreatmentRecord?.treatment_id &&
+      !!selectedTreatmentRecord?.sub_treatment_id,
   });
 
   const createAppointmentMutation = useMutation({
