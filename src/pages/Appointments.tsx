@@ -953,7 +953,8 @@ export default function Appointments() {
           treatment_id: selectedTreatmentRecord.treatment_id,
           sub_treatment_id: selectedTreatmentRecord.sub_treatment_id,
           tooth_number: selectedTreatmentRecord.tooth_number,
-          actual_cost: 0, // No additional cost for continuation session
+          actual_cost_syp: 0, // No additional cost for continuation session
+          actual_cost_usd: 0,
           is_completed: allStepsCompleted,
           treatment_notes: resumeTreatmentNotes || `استكمال العلاج - ${format(new Date(), 'dd/MM/yyyy')}`,
           performed_at: new Date().toISOString(),
