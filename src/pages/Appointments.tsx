@@ -347,27 +347,34 @@ export default function Appointments() {
           sub_treatments (name),
           appointments!inner (patient_id)
         `)
-        .eq("appointments.patient_id", selectedAppointment.patient_id);
+        .eq("appointments.patient_id", selectedAppointment.patient_id)
+        .order("performed_at", { ascending: false });
 
       if (recordsError) {
         console.error("Error fetching treatment records:", recordsError);
         throw recordsError;
       }
 
-      console.log("All treatment records for patient:", allRecords);
-
       // Filter for incomplete records (is_completed is false or null)
-      const incompleteRecords = allRecords?.filter(record =>
-        record.is_completed === false || record.is_completed === null
-      ) || [];
+      const incompleteRecords = (allRecords || []).filter(
+        (record) => record.is_completed === false || record.is_completed === null
+      );
 
-      console.log("Incomplete records:", incompleteRecords);
+      // De-duplicate: a treatment may have multiple continuation sessions (multiple records)
+      // We keep only the most recent record per (treatment_id, sub_treatment_id, tooth_number)
+      const uniqueMap = new Map<string, any>();
+      for (const record of incompleteRecords) {
+        const key = `${record.treatment_id}_${record.sub_treatment_id}_${record.tooth_number}`;
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, record);
+        }
+      }
 
-      return incompleteRecords.map(record => ({
+      return Array.from(uniqueMap.values()).map((record) => ({
         ...record,
         treatment_name: record.treatments?.name,
         sub_treatment_name: record.sub_treatments?.name,
-        patient_id: selectedAppointment.patient_id
+        patient_id: selectedAppointment.patient_id,
       }));
     },
     enabled: !!selectedAppointment?.patient_id,
@@ -453,19 +460,43 @@ export default function Appointments() {
     enabled: !!selectedTreatmentRecord?.sub_treatment_id,
   });
 
-  // Query to get completed steps for the selected treatment record
+  // Query to get completed steps for the selected treatment (across ALL related appointments)
   const { data: resumeCompletedSteps } = useQuery({
-    queryKey: ["resume-completed-steps", selectedTreatmentRecord?.appointment_id],
+    queryKey: ["resume-completed-steps", selectedAppointment?.patient_id, selectedTreatmentRecord?.treatment_id, selectedTreatmentRecord?.sub_treatment_id, selectedTreatmentRecord?.tooth_number],
     queryFn: async () => {
-      if (!selectedTreatmentRecord?.appointment_id) return [];
+      if (!selectedAppointment?.patient_id || !selectedTreatmentRecord?.treatment_id || !selectedTreatmentRecord?.sub_treatment_id) return [];
+
+      // 1) Find all appointments where this same treatment/sub-treatment/tooth was performed for this patient
+      const { data: relatedRecords, error: relatedError } = await supabase
+        .from("treatment_records")
+        .select(`appointment_id, appointments!inner (patient_id)`)
+        .eq("appointments.patient_id", selectedAppointment.patient_id)
+        .eq("treatment_id", selectedTreatmentRecord.treatment_id)
+        .eq("sub_treatment_id", selectedTreatmentRecord.sub_treatment_id)
+        .eq("tooth_number", selectedTreatmentRecord.tooth_number);
+
+      if (relatedError) throw relatedError;
+
+      const appointmentIds = Array.from(
+        new Set([
+          ...(relatedRecords || []).map((r: any) => r.appointment_id).filter(Boolean),
+          selectedAppointment.id,
+        ])
+      );
+
+      if (appointmentIds.length === 0) return [];
+
+      // 2) Fetch completed steps for those appointments, filtered to this sub_treatment via join
       const { data, error } = await supabase
         .from("appointment_treatment_steps")
-        .select("*")
-        .eq("appointment_id", selectedTreatmentRecord.appointment_id);
+        .select(`*, sub_treatment_steps!inner (sub_treatment_id)`)
+        .in("appointment_id", appointmentIds)
+        .eq("sub_treatment_steps.sub_treatment_id", selectedTreatmentRecord.sub_treatment_id);
+
       if (error) throw error;
-      return data;
+      return data || [];
     },
-    enabled: !!selectedTreatmentRecord?.appointment_id,
+    enabled: !!selectedAppointment?.patient_id && !!selectedTreatmentRecord?.treatment_id && !!selectedTreatmentRecord?.sub_treatment_id,
   });
 
   const createAppointmentMutation = useMutation({
