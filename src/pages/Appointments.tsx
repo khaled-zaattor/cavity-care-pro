@@ -988,20 +988,49 @@ export default function Appointments() {
           .eq("id", selectedTreatmentRecord.id);
       }
 
-      // Create a new treatment record for the current appointment to show in appointments history
-      await supabase
+      // Check if a treatment record already exists for this appointment, treatment, sub_treatment, and tooth
+      const { data: existingRecord } = await supabase
         .from("treatment_records")
-        .insert({
-          appointment_id: selectedAppointment.id,
-          treatment_id: selectedTreatmentRecord.treatment_id,
-          sub_treatment_id: selectedTreatmentRecord.sub_treatment_id,
-          tooth_number: selectedTreatmentRecord.tooth_number,
-          actual_cost_syp: 0, // No additional cost for continuation session
-          actual_cost_usd: 0,
-          is_completed: allStepsCompleted,
-          treatment_notes: resumeTreatmentNotes || `استكمال العلاج - ${format(new Date(), 'dd/MM/yyyy')}`,
-          performed_at: new Date().toISOString(),
-        });
+        .select("id, treatment_notes")
+        .eq("appointment_id", selectedAppointment.id)
+        .eq("treatment_id", selectedTreatmentRecord.treatment_id)
+        .eq("sub_treatment_id", selectedTreatmentRecord.sub_treatment_id)
+        .eq("tooth_number", selectedTreatmentRecord.tooth_number)
+        .maybeSingle();
+
+      if (existingRecord) {
+        // Update existing record instead of creating a new one
+        const existingRecordNotes = existingRecord.treatment_notes || "";
+        const updatedRecordNotes = resumeTreatmentNotes
+          ? (existingRecordNotes
+              ? `${existingRecordNotes}\n${resumeTreatmentNotes}`
+              : resumeTreatmentNotes)
+          : existingRecordNotes;
+
+        await supabase
+          .from("treatment_records")
+          .update({
+            is_completed: allStepsCompleted,
+            treatment_notes: updatedRecordNotes,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", existingRecord.id);
+      } else {
+        // Create a new treatment record for the current appointment only if one doesn't exist
+        await supabase
+          .from("treatment_records")
+          .insert({
+            appointment_id: selectedAppointment.id,
+            treatment_id: selectedTreatmentRecord.treatment_id,
+            sub_treatment_id: selectedTreatmentRecord.sub_treatment_id,
+            tooth_number: selectedTreatmentRecord.tooth_number,
+            actual_cost_syp: 0, // No additional cost for continuation session
+            actual_cost_usd: 0,
+            is_completed: allStepsCompleted,
+            treatment_notes: resumeTreatmentNotes || `استكمال العلاج - ${format(new Date(), 'dd/MM/yyyy')}`,
+            performed_at: new Date().toISOString(),
+          });
+      }
 
       if (allStepsCompleted) {
         // Remove from unfinished_sub_treatments
