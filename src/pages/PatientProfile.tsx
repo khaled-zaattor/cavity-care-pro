@@ -1380,8 +1380,10 @@ export default function PatientProfile() {
                         {record.appointments?.doctors?.full_name || '-'}
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm text-muted-foreground max-w-xs truncate" title={record.treatment_notes || '-'}>
-                          {record.treatment_notes || '-'}
+                        <div className="text-sm text-muted-foreground max-w-xs whitespace-pre-wrap">
+                          {record.treatment_notes 
+                            ? [...new Set(record.treatment_notes.split('\n').filter((line: string) => line.trim()))].join('\n') 
+                            : '-'}
                         </div>
                       </TableCell>
                       <TableCell>
