@@ -61,7 +61,7 @@ export function RolePermissionsManagement() {
     }) => {
       const { error } = await supabase
         .from("role_permissions")
-        .update({ [field]: value })
+        .update({ [field]: value } as { can_create?: boolean; can_update?: boolean; can_delete?: boolean })
         .eq("id", id);
       
       if (error) throw error;
