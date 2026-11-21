@@ -424,7 +424,7 @@ export const adminApi = {
 export type ActivitySubject =
   | "appointment" | "payment" | "treatment_record" | "treatment_plan" | "patient" | "doctor" | "user"
   // price list (treatments / sub-treatments) and settings (specialties / role permissions)
-  | "treatment" | "settings" | "prescription";
+  | "treatment" | "settings" | "prescription" | "patient_file";
 export type ActivityEvent = "created" | "updated" | "deleted" | "imported";
 
 export interface ActivityLogEntry {
@@ -579,6 +579,94 @@ export const clinicSettingsApi = {
   removeLogo: () => d(api.delete<Data<ClinicSettings>>("/clinic-settings/logo")),
   /** <img src> for the logo (same-origin, session cookie). */
   logoUrl: (bust?: string | number) => `${API_BASE}/clinic-settings/logo${bust ? `?v=${bust}` : ""}`,
+};
+
+// ---------------------------------------------------------------------------
+// Phase F: patient files and medical timeline
+// ---------------------------------------------------------------------------
+
+export type PatientFileCategory = "xray" | "radiology" | "lab_test" | "report" | "photo" | "prescription_scan" | "other";
+
+export interface PatientFile {
+  id: string;
+  patient_id: string;
+  appointment_id: string | null;
+  doctor_id: string | null;
+  specialty_id: string | null;
+  category: PatientFileCategory;
+  title: string;
+  taken_at: string | null; // YYYY-MM-DD
+  notes: string | null;
+  original_name: string;
+  mime: string;
+  size: number;
+  is_image: boolean;
+  has_thumbnail: boolean;
+  created_at: string;
+  uploader?: { id: string; full_name: string | null; email: string } | null;
+  doctor?: { id: string; full_name: string } | null;
+  specialty?: { id: string; name_ar: string; color: string | null } | null;
+}
+
+export interface TimelineEvent {
+  type: "appointment" | "treatment" | "prescription" | "file" | "payment";
+  id: string;
+  at: string;
+  title: string;
+  detail: string | null;
+  doctor: string | null;
+  specialty: { id: string; name: string; color: string | null } | null;
+  status?: AppointmentStatus;
+  completed?: boolean;
+  amount_syp?: number;
+  amount_usd?: number;
+  amount?: number;
+  currency?: Currency;
+  is_image?: boolean;
+  has_thumbnail?: boolean;
+  mime?: string;
+}
+
+export interface StorageUsage {
+  files_count: number;
+  files_bytes: number;
+  disk_total_bytes: number | null;
+  disk_free_bytes: number | null;
+  disk_used_percent: number | null;
+  warning: boolean;
+  warning_percent: number;
+}
+
+export const patientFilesApi = {
+  list: (patientId: string, category?: PatientFileCategory) =>
+    api.get<{ data: PatientFile[]; categories: Record<PatientFileCategory, string>; max_upload_mb: number }>(
+      `/patients/${patientId}/files`, { category }),
+  upload: (patientId: string, file: File, meta: { category: PatientFileCategory; title?: string; taken_at?: string; notes?: string; appointment_id?: string | null }) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("category", meta.category);
+    if (meta.title) form.append("title", meta.title);
+    if (meta.taken_at) form.append("taken_at", meta.taken_at);
+    if (meta.notes) form.append("notes", meta.notes);
+    if (meta.appointment_id) form.append("appointment_id", meta.appointment_id);
+    return d(api.post<Data<PatientFile>>(`/patients/${patientId}/files`, form));
+  },
+  update: (id: string, body: Partial<Pick<PatientFile, "category" | "title" | "taken_at" | "notes">>) =>
+    d(api.patch<Data<PatientFile>>(`/patient-files/${id}`, body)),
+  remove: (id: string) => api.delete(`/patient-files/${id}`),
+  /** Same-origin URLs (session cookie) for <img>/<a>. */
+  contentUrl: (id: string, download = false) => `${API_BASE}/patient-files/${id}/content${download ? "?download=1" : ""}`,
+  thumbnailUrl: (id: string) => `${API_BASE}/patient-files/${id}/thumbnail`,
+};
+
+export const timelineApi = {
+  get: (patientId: string, params: { specialty_id?: string; types?: string } = {}) =>
+    api.get<{ data: TimelineEvent[]; specialties: { id: string; name: string; color: string | null }[] }>(
+      `/patients/${patientId}/timeline`, params),
+};
+
+export const storageApi = {
+  usage: () => d(api.get<Data<StorageUsage>>("/admin/storage")),
 };
 
 // ---------------------------------------------------------------------------

@@ -29,6 +29,13 @@ return [
     'mysql_path' => env('MYSQL_PATH', 'mysql'),
     'backup_keep_days' => (int) env('BACKUP_KEEP_DAYS', 14),
 
+    // Patient files (x-rays, lab results…). PHP's upload_max_filesize must allow this too
+    // (backend/public/.user.ini on the shared host).
+    'upload_max_mb' => (int) env('UPLOAD_MAX_MB', 20),
+
+    // Admin dashboard warns when the storage disk is this full.
+    'disk_warning_percent' => (int) env('DISK_WARNING_PERCENT', 80),
+
     'permissions' => [
         'patients' => ['view' => $all, 'create' => $all, 'update' => $all, 'delete' => [$S]],
         'doctors' => ['view' => $all, 'create' => [$S], 'update' => [$S], 'delete' => [$S]],
@@ -51,6 +58,8 @@ return [
         'prescriptions' => ['view' => $all, 'create' => [$S, $D], 'update' => [$S, $D], 'delete' => [$S, $D]],
         'prescription_templates' => ['view' => [$S, $D], 'create' => [$S, $D], 'update' => [$S, $D], 'delete' => [$S, $D]],
         'clinic_settings' => ['view' => $all, 'create' => [$S], 'update' => [$S], 'delete' => [$S]],
+        // Phase F: reception may scan/upload what patients bring; only doctors/admin delete.
+        'patient_files' => ['view' => $all, 'create' => $all, 'update' => $medical, 'delete' => [$S, $D]],
     ],
 
 ];

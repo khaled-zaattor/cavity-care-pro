@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\DoctorController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\MoneyController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\PatientFileController;
 use App\Http\Controllers\Api\PatientHistoryController;
 use App\Http\Controllers\Api\PrescriptionController;
 use App\Http\Controllers\Api\PrescriptionTemplateController;
@@ -117,6 +118,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/clinic-settings/logo', [ClinicSettingController::class, 'logo']);
     Route::post('/clinic-settings/logo', [ClinicSettingController::class, 'uploadLogo']);
     Route::delete('/clinic-settings/logo', [ClinicSettingController::class, 'deleteLogo']);
+
+    // Phase F: patient files, medical timeline, storage usage
+    Route::get('/patients/{patient}/files', [PatientFileController::class, 'index']);
+    Route::post('/patients/{patient}/files', [PatientFileController::class, 'store']);
+    Route::get('/patients/{patient}/timeline', [PatientHistoryController::class, 'timeline']);
+    Route::get('/patient-files/{file}/content', [PatientFileController::class, 'content']);
+    Route::get('/patient-files/{file}/thumbnail', [PatientFileController::class, 'thumbnail']);
+    Route::patch('/patient-files/{file}', [PatientFileController::class, 'update']);
+    Route::delete('/patient-files/{file}', [PatientFileController::class, 'destroy']);
+    Route::get('/admin/storage', [ReportController::class, 'storage']);
 
     Route::post('/auth/password', [AuthController::class, 'changePassword']);
 });

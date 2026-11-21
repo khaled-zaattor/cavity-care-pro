@@ -11,6 +11,7 @@ import { Shield, Lock, Users, Settings, BarChart3, KeyRound, Printer } from "luc
 import { ClinicPrintSettings } from "@/components/ClinicPrintSettings";
 import { AdminUserManagement } from "@/components/AdminUserManagement";
 import { SystemStatistics } from "@/components/SystemStatistics";
+import { StorageUsageCard } from "@/components/StorageUsageCard";
 import { RolePermissionsManagement } from "@/components/RolePermissionsManagement";
 
 export default function AdminDashboard() {
@@ -124,6 +125,7 @@ export default function AdminDashboard() {
         </TabsContent>
 
         <TabsContent value="statistics" className="space-y-4">
+          <StorageUsageCard />
           <SystemStatistics />
         </TabsContent>
 

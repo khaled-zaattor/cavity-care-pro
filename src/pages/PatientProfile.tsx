@@ -18,6 +18,8 @@ import { format } from "date-fns";
 import { useUserRole } from "@/hooks/useUserRole";
 import { PatientActivityHistory } from "@/components/PatientActivityHistory";
 import { PatientPrescriptions } from "@/components/PatientPrescriptions";
+import { PatientFiles } from "@/components/PatientFiles";
+import { PatientTimeline } from "@/components/PatientTimeline";
 import { PrescriptionDialog } from "@/components/PrescriptionDialog";
 import {
   apiErrorMessage,
@@ -48,7 +50,7 @@ export default function PatientProfile() {
   const [isEditPaymentDialogOpen, setIsEditPaymentDialogOpen] = useState(false);
   const [isTreatmentPlanDialogOpen, setIsTreatmentPlanDialogOpen] = useState(false);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
-  const [activeSection, setActiveSection] = useState("all"); // "all", "appointments", "treatments", "payments", "prescriptions", "history" (admin)
+  const [activeSection, setActiveSection] = useState("all"); // "all", "appointments", "treatments", "payments", "prescriptions", "files", "timeline", "history" (admin)
   const [editingPayments, setEditingPayments] = useState<{[key: string]: string}>({});
   const [isDeleteTreatmentDialogOpen, setIsDeleteTreatmentDialogOpen] = useState(false);
   const [treatmentToDelete, setTreatmentToDelete] = useState<string | null>(null);
@@ -423,6 +425,20 @@ export default function PatientProfile() {
             size="sm"
           >
             الوصفات
+          </Button>
+          <Button
+            variant={activeSection === "files" ? "default" : "outline"}
+            onClick={() => setActiveSection("files")}
+            size="sm"
+          >
+            الملفات
+          </Button>
+          <Button
+            variant={activeSection === "timeline" ? "default" : "outline"}
+            onClick={() => setActiveSection("timeline")}
+            size="sm"
+          >
+            السجل الطبي
           </Button>
           {isSuperAdmin && (
             <Button
@@ -1573,6 +1589,10 @@ export default function PatientProfile() {
       {(activeSection === "all" || activeSection === "prescriptions") && patient && (
         <PatientPrescriptions patient={{ id: patient.id, full_name: patient.full_name }} />
       )}
+
+      {(activeSection === "all" || activeSection === "files") && patientId && <PatientFiles patientId={patientId} />}
+
+      {activeSection === "timeline" && patientId && <PatientTimeline patientId={patientId} />}
 
       {isSuperAdmin && activeSection === "history" && patientId && <PatientActivityHistory patientId={patientId} />}
 

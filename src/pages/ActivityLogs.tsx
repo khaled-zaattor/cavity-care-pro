@@ -12,6 +12,7 @@ import {
   FileClock,
   FileText,
   FileUp,
+  FolderOpen,
   ListOrdered,
   Pencil,
   Settings2,
@@ -57,6 +58,7 @@ const SUBJECTS: Record<ActivitySubject, { label: string; icon: LucideIcon }> = {
   treatment: { label: "قائمة العلاجات والأسعار", icon: ListOrdered },
   settings: { label: "التخصصات والصلاحيات", icon: Settings2 },
   prescription: { label: "الوصفات الطبية", icon: FileText },
+  patient_file: { label: "ملفات المرضى", icon: FolderOpen },
 };
 
 const EVENTS: Record<ActivityEvent, { label: string; icon: LucideIcon; dot: string; chip: string }> = {

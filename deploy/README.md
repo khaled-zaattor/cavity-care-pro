@@ -125,10 +125,12 @@ Prepare in advance: production DB + user, `deploy/targets/production.env` (`WEB_
 - **I edited `shared/.env` but nothing changed.** The config is cached. Run `php artisan config:cache` in `current/`, or redeploy. Values passed on the command line are ignored for the same reason, so put `MYSQL_PATH` / `MYSQLDUMP_PATH` in `shared/.env` if those tools are not on the PATH.
 - **Smoke test: "login path works" fails with 500.** Read `shared/storage/logs/laravel-*.log`. (A rehearsal caught exactly this: the login rate limiter was registered somewhere that route caching skips. That is fixed in `AppServiceProvider`.)
 - **`/api/...` returns the React page instead of JSON.** The `api` symlink is missing or Apache doesn't follow symlinks. Check `ls -l <WEB_DIR>/api`. If needed, add `Options +FollowSymLinks` (or `+SymLinksIfOwnerMatch`) to `<WEB_DIR>/.htaccess`.
+- **Uploading an x-ray fails with "file too large" (413/422) below 20 MB.** The host's PHP limit is lower. `backend/public/.user.ini` raises it (`upload_max_filesize = 25M`, `post_max_size = 30M`). Some hosts need the same values set in cPanel → *MultiPHP INI Editor*. Changes can take up to 5 minutes.
 - **Login works but every next request is 401.** `SANCTUM_STATEFUL_DOMAINS` doesn't match the exact host in the browser (`www.` vs no `www.`), or `SESSION_SECURE_COOKIE=true` on a site without HTTPS.
 
 ## 7. After go-live
 
 - [ ] Download a backup off the server weekly (`shared/storage/app/private/backups/`).
+- [ ] Back up patient files too: the daily backup covers the **database only**. X-rays and lab results live in `shared/storage/app/private/patients/`. Download that folder regularly (cPanel → File Manager → Compress), or ask the host for a backup that includes it. The admin dashboard shows the disk usage and warns at 80%.
 - [ ] Change the Supabase database password (it was shared during the migration).
 - [ ] Remove `@supabase/supabase-js` and `src/integrations/supabase` from the frontend (plan §8).
