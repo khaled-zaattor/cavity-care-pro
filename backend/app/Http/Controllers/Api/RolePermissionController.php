@@ -16,7 +16,12 @@ class RolePermissionController extends Controller
     {
         $this->authorize('viewAny', RolePermission::class);
 
+        $user = $request->user();
+
         $rows = RolePermission::query()
+            // Supabase policy "Users can view permissions of their own role"
+            // (migration 20261119074946): only super_admin sees every role.
+            ->when(! $user->isSuperAdmin(), fn ($q) => $q->where('role', $user->role))
             ->when($request->query('role'), fn ($q, $role) => $q->where('role', $role))
             ->orderBy('role')
             ->orderBy('resource')
