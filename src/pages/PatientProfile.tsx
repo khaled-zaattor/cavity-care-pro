@@ -13,13 +13,26 @@ import { ArrowLeft, Plus, Calendar, CreditCard, Edit, Download, Trash2, FileText
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import * as XLSX from 'xlsx';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useUserRole } from "@/hooks/useUserRole";
+import {
+  apiErrorMessage,
+  appointmentsApi,
+  catalogApi,
+  doctorsApi,
+  moneyApi,
+  patientsApi,
+  type Currency,
+  type TreatmentRecord,
+} from "@/api/clinic";
+
+/** dd/MM/yyyy for an ISO date, or "-" when missing. */
+const fmtDate = (value: string | null | undefined, pattern = 'dd/MM/yyyy') =>
+  value ? format(new Date(value), pattern) : '-';
 
 export default function PatientProfile() {
-  const { patientId } = useParams();
+  const { patientId = "" } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -35,7 +48,7 @@ export default function PatientProfile() {
   const [isDeleteTreatmentDialogOpen, setIsDeleteTreatmentDialogOpen] = useState(false);
   const [treatmentToDelete, setTreatmentToDelete] = useState<string | null>(null);
   const [isEditTreatmentCostDialogOpen, setIsEditTreatmentCostDialogOpen] = useState(false);
-  const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<any>(null);
+  const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<TreatmentRecord | null>(null);
   const [editingTreatmentCostSyp, setEditingTreatmentCostSyp] = useState("");
   const [editingTreatmentCostUsd, setEditingTreatmentCostUsd] = useState("");
 
@@ -48,123 +61,80 @@ export default function PatientProfile() {
 
   const [newAppointment, setNewAppointment] = useState({
     doctor_id: "",
+    specialty_id: "",
     scheduled_at: "",
     notes: "",
   });
 
   const [newPayment, setNewPayment] = useState({
     amount: "",
-    currency: "SYP" as "SYP" | "USD",
+    currency: "SYP" as Currency,
   });
+
+  const showError = (e: unknown) =>
+    toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
 
   // Fetch patient data
   const { data: patient } = useQuery({
     queryKey: ["patient", patientId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("patients")
-        .select("*")
-        .eq("id", patientId)
-        .single();
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => patientsApi.get(patientId),
+    enabled: !!patientId,
   });
 
   // Query to get future appointments for this patient
   const { data: patientFutureAppointments } = useQuery({
     queryKey: ["patient-future-appointments", patientId],
-    queryFn: async () => {
-      if (!patientId) return [];
-      const now = new Date().toISOString();
-      const { data, error } = await supabase
-        .from("appointments")
-        .select(`
-          id,
-          scheduled_at,
-          status,
-          doctors (full_name)
-        `)
-        .eq("patient_id", patientId)
-        .gte("scheduled_at", now)
-        .order("scheduled_at", { ascending: true });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => appointmentsApi.list({ patient_id: patientId, upcoming: true }).then((r) => r.data),
     enabled: !!patientId,
   });
 
   // Fetch doctors
   const { data: doctors } = useQuery({
     queryKey: ["doctors"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("doctors").select("*");
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => doctorsApi.list(),
   });
 
-  // Fetch treatments
+  // Fetch treatments (with nested sub-treatments)
   const { data: treatments } = useQuery({
-    queryKey: ["treatments"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("treatments").select("*");
-      if (error) throw error;
-      return data;
-    },
+    queryKey: ["treatments", "all-visible"],
+    queryFn: () => catalogApi.list(),
   });
 
-  // Fetch sub-treatments
-  const { data: subTreatments } = useQuery({
-    queryKey: ["sub-treatments", treatmentPlan.treatment_id],
-    queryFn: async () => {
-      if (!treatmentPlan.treatment_id) return [];
-      const { data, error } = await supabase
-        .from("sub_treatments")
-        .select("*")
-        .eq("treatment_id", treatmentPlan.treatment_id);
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!treatmentPlan.treatment_id,
-  });
+  const selectedPlanTreatment = treatments?.find((t) => t.id === treatmentPlan.treatment_id);
+  const subTreatments = selectedPlanTreatment?.sub_treatments ?? [];
+
+  const invalidatePatientMoney = () => {
+    queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
+    queryClient.invalidateQueries({ queryKey: ["all-payments", patientId] });
+    queryClient.invalidateQueries({ queryKey: ["all-treatment-records", patientId] });
+    queryClient.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
+  };
 
   // Mutation to mark sub-treatment as completed
   const markCompleteMutation = useMutation({
-    mutationFn: async (recordId: string) => {
-      const { error } = await supabase
-        .from("treatment_records")
-        .update({ is_completed: true })
-        .eq("id", recordId);
-      if (error) throw error;
-    },
+    mutationFn: (recordId: string) => moneyApi.updateRecord(recordId, { is_completed: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["unfinished-sub-treatments", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
+      invalidatePatientMoney();
       toast({ title: "تم", description: "تم وضع علامة مكتمل" });
     },
+    onError: showError,
   });
 
   // Mutation to delete treatment record
   const deleteTreatmentMutation = useMutation({
-    mutationFn: async (recordId: string) => {
-      const { error } = await supabase
-        .from("treatment_records")
-        .delete()
-        .eq("id", recordId);
-      if (error) throw error;
-    },
+    mutationFn: (recordId: string) => moneyApi.removeRecord(recordId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["all-treatment-records", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
+      invalidatePatientMoney();
+      queryClient.invalidateQueries({ queryKey: ["unfinished-sub-treatments", patientId] });
       setIsDeleteTreatmentDialogOpen(false);
       setTreatmentToDelete(null);
       toast({ title: "تم الحذف", description: "تم حذف العلاج بنجاح" });
     },
-    onError: () => {
-      toast({ 
-        title: "خطأ", 
-        description: "حدث خطأ أثناء حذف العلاج",
+    onError: (e) => {
+      toast({
+        title: "خطأ",
+        description: apiErrorMessage(e) || "حدث خطأ أثناء حذف العلاج",
         variant: "destructive"
       });
     },
@@ -173,237 +143,108 @@ export default function PatientProfile() {
   // Fetch unfinished sub-treatments
   const { data: unfinishedSubTreatments } = useQuery({
     queryKey: ["unfinished-sub-treatments", patientId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("unfinished_sub_treatments")
-        .select("id, sub_treatment_name, treatment_name, tooth_number")
-        .eq("patient_id", patientId);
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => patientsApi.unfinished(patientId),
+    enabled: !!patientId,
   });
 
   // Fetch appointments
   const { data: appointments } = useQuery({
     queryKey: ["patient-appointments", patientId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("appointments")
-        .select(`
-          *,
-          doctors (full_name),
-          payments (amount, paid_at),
-          treatment_records (
-            *,
-            treatments (name),
-            sub_treatments (name)
-          )
-        `)
-        .eq("patient_id", patientId)
-        .order("scheduled_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => patientsApi.appointments(patientId),
+    enabled: !!patientId,
   });
 
-  // Calculate patient balance
+  // Patient balance (computed on the server, per books and per specialty)
   const { data: balance } = useQuery({
     queryKey: ["patient-balance", patientId],
-    queryFn: async () => {
-      const { data: treatmentRecords, error: trError } = await supabase
-        .from("treatment_records")
-        .select(`
-          *,
-          appointments!inner (patient_id)
-        `)
-        .eq("appointments.patient_id", patientId);
-
-      const { data: payments, error: pError } = await supabase
-        .from("payments")
-        .select(`
-          amount,
-          currency,
-          appointments!inner (patient_id)
-        `)
-        .eq("appointments.patient_id", patientId);
-
-      if (trError || pError) throw trError || pError;
-
-      const totalCostSyp = treatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_syp || 0), 0) || 0;
-      const totalCostUsd = treatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_usd || 0), 0) || 0;
-      const totalPaidSyp = payments?.filter(p => (p as any).currency === 'SYP' || !(p as any).currency).reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-      const totalPaidUsd = payments?.filter(p => (p as any).currency === 'USD').reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-
-      return {
-        syp: totalCostSyp - totalPaidSyp,
-        usd: totalCostUsd - totalPaidUsd,
-      };
-    },
+    queryFn: () => patientsApi.balance(patientId),
+    enabled: !!patientId,
   });
 
-  // Fetch all treatment records for this patient
+  // Fetch all treatment records for this patient (executed steps embedded)
   const { data: allTreatmentRecords } = useQuery({
     queryKey: ["all-treatment-records", patientId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("treatment_records")
-        .select(`
-          *,
-          treatments (name),
-          sub_treatments (name),
-          appointments!inner (
-            patient_id, 
-            scheduled_at,
-            doctors (full_name),
-            id
-          )
-        `)
-        .eq("appointments.patient_id", patientId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-
-      // For each treatment record, fetch the executed steps for this specific sub_treatment
-      const recordsWithSteps = await Promise.all(
-        (data || []).map(async (record) => {
-          const { data: steps, error: stepsError } = await supabase
-            .from("appointment_treatment_steps")
-            .select(`
-              *,
-              sub_treatment_step_id,
-              sub_treatment_steps!inner (
-                step_name,
-                sub_treatment_id
-              )
-            `)
-            .eq("appointment_id", record.appointments.id)
-            .eq("sub_treatment_steps.sub_treatment_id", record.sub_treatment_id);
-
-          if (stepsError) {
-            console.error("Error fetching steps:", stepsError);
-            return { ...record, executed_steps: [] };
-          }
-
-          return { ...record, executed_steps: steps || [] };
-        })
-      );
-
-      return recordsWithSteps;
-    },
+    queryFn: () => patientsApi.treatmentRecords(patientId),
+    enabled: !!patientId,
   });
 
   // Fetch all payments for this patient
   const { data: allPayments } = useQuery({
     queryKey: ["all-payments", patientId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("payments")
-        .select(`
-          *,
-          appointments!inner (
-            patient_id, 
-            scheduled_at,
-            doctors (full_name)
-          )
-        `)
-        .eq("appointments.patient_id", patientId)
-        .order("paid_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => patientsApi.payments(patientId),
+    enabled: !!patientId,
   });
 
+  const selectedAppointmentDoctor = doctors?.find((d) => d.id === newAppointment.doctor_id);
+  const doctorSpecialties = selectedAppointmentDoctor?.specialties ?? [];
+
   const createAppointmentMutation = useMutation({
-    mutationFn: async (appointment: typeof newAppointment) => {
-      const { data, error } = await supabase
-        .from("appointments")
-        .insert([{ ...appointment, patient_id: patientId }])
-        .select();
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (appointment: typeof newAppointment) =>
+      appointmentsApi.create({
+        patient_id: patientId,
+        doctor_id: appointment.doctor_id,
+        specialty_id: appointment.specialty_id || undefined,
+        scheduled_at: new Date(appointment.scheduled_at).toISOString(),
+        notes: appointment.notes || null,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["patient-future-appointments", patientId] });
       setIsAppointmentDialogOpen(false);
-      setNewAppointment({ doctor_id: "", scheduled_at: "", notes: "" });
+      setNewAppointment({ doctor_id: "", specialty_id: "", scheduled_at: "", notes: "" });
       toast({ title: "نجح", description: "تم جدولة الموعد بنجاح" });
     },
+    onError: showError,
   });
 
   const createPaymentMutation = useMutation({
-    mutationFn: async (payment: typeof newPayment) => {
-      const { data, error } = await supabase
-        .from("payments")
-        .insert([{ 
-          appointment_id: selectedAppointmentId, 
-          amount: parseFloat(payment.amount),
-          currency: payment.currency
-        }])
-        .select();
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (payment: typeof newPayment) =>
+      moneyApi.addPayment({
+        appointment_id: selectedAppointmentId,
+        amount: parseFloat(payment.amount),
+        currency: payment.currency,
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
+      invalidatePatientMoney();
       queryClient.invalidateQueries({ queryKey: ["appointment-payments", selectedAppointmentId] });
       setIsPaymentDialogOpen(false);
       setNewPayment({ amount: "", currency: "SYP" });
       toast({ title: "نجح", description: "تم تسجيل الدفعة بنجاح" });
     },
+    onError: showError,
   });
 
   // Fetch payments for a specific appointment
   const { data: appointmentPayments } = useQuery({
     queryKey: ["appointment-payments", selectedAppointmentId],
-    queryFn: async () => {
-      if (!selectedAppointmentId) return [];
-      const { data, error } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("appointment_id", selectedAppointmentId)
-        .order("paid_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => appointmentsApi.payments(selectedAppointmentId),
     enabled: !!selectedAppointmentId,
   });
 
   // Update payment mutation
   const updatePaymentMutation = useMutation({
-    mutationFn: async ({ paymentId, newAmount }: { paymentId: string; newAmount: number }) => {
-      const { error } = await supabase
-        .from("payments")
-        .update({ amount: newAmount })
-        .eq("id", paymentId);
-      if (error) throw error;
-    },
+    mutationFn: ({ paymentId, newAmount }: { paymentId: string; newAmount: number }) =>
+      moneyApi.updatePayment(paymentId, newAmount),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
+      invalidatePatientMoney();
       queryClient.invalidateQueries({ queryKey: ["appointment-payments", selectedAppointmentId] });
-      queryClient.invalidateQueries({ queryKey: ["all-payments", patientId] });
       toast({ title: "نجح", description: "تم تعديل الدفعة بنجاح" });
     },
+    onError: showError,
   });
 
   // Update treatment cost mutation
   const updateTreatmentCostMutation = useMutation({
-    mutationFn: async ({ treatmentRecordId, newCostSyp, newCostUsd }: { treatmentRecordId: string; newCostSyp: number; newCostUsd: number }) => {
-      const { error } = await supabase
-        .from("treatment_records")
-        .update({ actual_cost_syp: newCostSyp, actual_cost_usd: newCostUsd })
-        .eq("id", treatmentRecordId);
-      if (error) throw error;
-    },
+    mutationFn: ({ treatmentRecordId, newCostSyp, newCostUsd }: { treatmentRecordId: string; newCostSyp: number; newCostUsd: number }) =>
+      moneyApi.updateRecord(treatmentRecordId, { actual_cost_syp: newCostSyp, actual_cost_usd: newCostUsd }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["all-treatment-records", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
+      invalidatePatientMoney();
       setIsEditTreatmentCostDialogOpen(false);
       setEditingTreatmentCostSyp("");
       setEditingTreatmentCostUsd("");
       toast({ title: "نجح", description: "تم تعديل كلفة العلاج بنجاح" });
     },
+    onError: showError,
   });
 
   const handleScheduleAppointment = (e: React.FormEvent) => {
@@ -418,23 +259,20 @@ export default function PatientProfile() {
 
   // Create treatment plan mutation
   const createTreatmentPlanMutation = useMutation({
-    mutationFn: async (plan: typeof treatmentPlan) => {
-      const { data, error } = await supabase
-        .from("treatment_plans")
-        .insert([{ 
-          ...plan, 
-          patient_id: patientId,
-          is_executed: false 
-        }])
-        .select();
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (plan: typeof treatmentPlan) =>
+      moneyApi.createPlan({
+        patient_id: patientId,
+        treatment_id: plan.treatment_id,
+        sub_treatment_id: plan.sub_treatment_id,
+        tooth_numbers: plan.tooth_number.split(",").map((t) => t.trim()).filter(Boolean),
+      }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patient-plans", patientId] });
       setIsTreatmentPlanDialogOpen(false);
       setTreatmentPlan({ treatment_id: "", sub_treatment_id: "", tooth_number: "" });
       toast({ title: "نجح", description: "تم إضافة خطة العلاج بنجاح" });
     },
+    onError: showError,
   });
 
   const handleAddTreatmentPlan = (e: React.FormEvent) => {
@@ -443,21 +281,22 @@ export default function PatientProfile() {
   };
 
   const handleExportPatientData = () => {
+    if (!patient) return;
     // Prepare appointments data
     const appointmentsData = appointments?.map(apt => ({
-      'التاريخ': format(new Date(apt.scheduled_at), 'dd/MM/yyyy'),
+      'التاريخ': fmtDate(apt.scheduled_at),
       'الوقت': new Date(apt.scheduled_at).toLocaleTimeString('ar-EG'),
-      'الطبيب': apt.doctors?.full_name || '',
+      'الطبيب': apt.doctor?.full_name || '',
       'الحالة': apt.status === 'Completed' ? 'مكتمل' : apt.status === 'Scheduled' ? 'مجدول' : 'ملغي',
       'الملاحظات': apt.notes || '-'
     })) || [];
 
     // Prepare treatments data
     const treatmentsData = allTreatmentRecords?.map(record => ({
-      'التاريخ': format(new Date((record.appointments as any)?.scheduled_at), 'dd/MM/yyyy'),
-      'الطبيب': (record.appointments as any)?.doctors?.full_name || '',
-      'العلاج': record.treatments?.name || '',
-      'الإجراء الفرعي': record.sub_treatments?.name || '',
+      'التاريخ': fmtDate(record.appointment?.scheduled_at),
+      'الطبيب': record.appointment?.doctor?.full_name || '',
+      'العلاج': record.treatment?.name || '',
+      'الإجراء الفرعي': record.sub_treatment?.name || '',
       'السن': record.tooth_number,
       'التكلفة بالليرة': Math.round(record.actual_cost_syp || 0),
       'التكلفة بالدولار': record.actual_cost_usd || 0,
@@ -466,35 +305,30 @@ export default function PatientProfile() {
 
     // Prepare payments data
     const paymentsData = allPayments?.map(payment => ({
-      'التاريخ': format(new Date(payment.paid_at), 'dd/MM/yyyy'),
+      'التاريخ': fmtDate(payment.paid_at),
       'المبلغ': Math.round(payment.amount),
-      'العملة': (payment as any).currency === 'USD' ? 'دولار' : 'ليرة سورية',
-      'الموعد': format(new Date((payment.appointments as any)?.scheduled_at), 'dd/MM/yyyy'),
-      'الطبيب': (payment.appointments as any)?.doctors?.full_name || ''
+      'العملة': payment.currency === 'USD' ? 'دولار' : 'ليرة سورية',
+      'الموعد': fmtDate(payment.appointment?.scheduled_at),
+      'الطبيب': payment.appointment?.doctor?.full_name || ''
     })) || [];
 
-    // Calculate totals
-    const totalCostSyp = allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_syp || 0), 0) || 0;
-    const totalCostUsd = allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_usd || 0), 0) || 0;
-    const totalPaidSyp = allPayments?.filter(p => (p as any).currency === 'SYP' || !(p as any).currency).reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-    const totalPaidUsd = allPayments?.filter(p => (p as any).currency === 'USD').reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-
+    // Totals come from the server balance
     const summaryData = [{
-      'إجمالي التكلفة بالليرة': Math.round(totalCostSyp),
-      'إجمالي التكلفة بالدولار': totalCostUsd,
-      'إجمالي المدفوع بالليرة': Math.round(totalPaidSyp),
-      'إجمالي المدفوع بالدولار': totalPaidUsd,
-      'الرصيد بالليرة': Math.round(totalCostSyp - totalPaidSyp),
-      'الرصيد بالدولار': totalCostUsd - totalPaidUsd,
+      'إجمالي التكلفة بالليرة': Math.round(balance?.total_cost_syp ?? 0),
+      'إجمالي التكلفة بالدولار': balance?.total_cost_usd ?? 0,
+      'إجمالي المدفوع بالليرة': Math.round(balance?.total_paid_syp ?? 0),
+      'إجمالي المدفوع بالدولار': balance?.total_paid_usd ?? 0,
+      'الرصيد بالليرة': Math.round(balance?.syp ?? 0),
+      'الرصيد بالدولار': balance?.usd ?? 0,
     }];
 
     // Create workbook
     const wb = XLSX.utils.book_new();
-    
+
     // Add patient info sheet
     const patientInfo = [{
       'الاسم': patient.full_name,
-      'تاريخ الميلاد': format(new Date(patient.date_of_birth), 'dd/MM/yyyy'),
+      'تاريخ الميلاد': fmtDate(patient.date_of_birth),
       'الهاتف': patient.phone_number,
       'جهة الاتصال': patient.contact || '-',
       'الملاحظات الطبية': patient.medical_notes || '-'
@@ -520,10 +354,10 @@ export default function PatientProfile() {
 
     // Generate file
     XLSX.writeFile(wb, `${patient.full_name} - ملف المريض.xlsx`);
-    
-    toast({ 
-      title: "تم التصدير بنجاح", 
-      description: "تم تصدير بيانات المريض إلى ملف Excel" 
+
+    toast({
+      title: "تم التصدير بنجاح",
+      description: "تم تصدير بيانات المريض إلى ملف Excel"
     });
   };
 
@@ -589,7 +423,7 @@ export default function PatientProfile() {
           </CardHeader>
           <CardContent className="space-y-2">
             <div>
-              <strong>تاريخ الميلاد:</strong> {format(new Date(patient.date_of_birth), 'dd/MM/yyyy')}
+              <strong>تاريخ الميلاد:</strong> {fmtDate(patient.date_of_birth)}
             </div>
             <div>
               <strong>الهاتف:</strong> {patient.phone_number}
@@ -625,6 +459,33 @@ export default function PatientProfile() {
                 </div>
                 <p className="text-xs text-muted-foreground">{balance?.usd && balance.usd > 0 ? 'مستحق بالدولار' : 'رصيد زائد بالدولار'}</p>
               </div>
+              {balance?.by_books && balance.by_books.length > 1 && (
+                <div className="border-t pt-2 space-y-1 text-xs">
+                  {balance.by_books.map((b) => (
+                    <div key={b.doctor_id ?? "clinic"} className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">
+                        {b.doctor_id ? `د. ${b.name}` : "العيادة"}
+                      </span>
+                      <span>
+                        {Math.round(b.syp).toLocaleString('en-US')} ل.س / ${Math.round(b.usd).toLocaleString('en-US')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {balance?.by_specialty && balance.by_specialty.length > 1 && (
+                <div className="border-t pt-2 space-y-1 text-xs">
+                  <div className="font-medium">حسب التخصص</div>
+                  {balance.by_specialty.map((s) => (
+                    <div key={s.specialty_id ?? "none"} className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">{s.name}</span>
+                      <span>
+                        {Math.round(s.syp).toLocaleString('en-US')} ل.س / ${Math.round(s.usd).toLocaleString('en-US')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -648,7 +509,14 @@ export default function PatientProfile() {
                 <form onSubmit={handleScheduleAppointment} className="space-y-4">
                   <div>
                     <Label htmlFor="doctor_id">الطبيب</Label>
-                    <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
+                    <Select
+                      value={newAppointment.doctor_id}
+                      onValueChange={(value) => {
+                        const doctor = doctors?.find((d) => d.id === value);
+                        const primary = doctor?.specialties?.find((s) => s.is_primary)?.id ?? doctor?.primary_specialty_id ?? "";
+                        setNewAppointment({ ...newAppointment, doctor_id: value, specialty_id: primary });
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="اختر طبيب" />
                       </SelectTrigger>
@@ -661,6 +529,26 @@ export default function PatientProfile() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {doctorSpecialties.length > 1 && (
+                    <div>
+                      <Label htmlFor="specialty_id">التخصص</Label>
+                      <Select
+                        value={newAppointment.specialty_id}
+                        onValueChange={(value) => setNewAppointment({ ...newAppointment, specialty_id: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="اختر التخصص" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {doctorSpecialties.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name_ar}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
                     <Input
@@ -696,7 +584,7 @@ export default function PatientProfile() {
                               {format(new Date(apt.scheduled_at), "HH:mm")}
                             </span>
                             <span className="text-amber-600 dark:text-amber-400">
-                              - {apt.doctors?.full_name}
+                              - {apt.doctor?.full_name}
                             </span>
                             <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                               apt.status === "Scheduled" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" :
@@ -737,11 +625,17 @@ export default function PatientProfile() {
                         <SelectValue placeholder="اختر علاج" />
                       </SelectTrigger>
                       <SelectContent>
-                        {treatments?.map((treatment) => (
-                          <SelectItem key={treatment.id} value={treatment.id}>
-                            {treatment.name}
-                          </SelectItem>
-                        ))}
+                        {treatments?.map((treatment) => {
+                          // super_admin sees every catalog: label independent doctors' treatments
+                          const owner = treatment.doctor_id
+                            ? doctors?.find((d) => d.id === treatment.doctor_id)
+                            : null;
+                          return (
+                            <SelectItem key={treatment.id} value={treatment.id}>
+                              {treatment.name}{owner ? ` (د. ${owner.full_name})` : ""}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
@@ -756,7 +650,7 @@ export default function PatientProfile() {
                         <SelectValue placeholder="اختر علاج فرعي" />
                       </SelectTrigger>
                       <SelectContent>
-                        {subTreatments?.map((subTreatment) => (
+                        {subTreatments.map((subTreatment) => (
                           <SelectItem key={subTreatment.id} value={subTreatment.id}>
                             {subTreatment.name}
                           </SelectItem>
@@ -767,7 +661,9 @@ export default function PatientProfile() {
 
                   {/* Tooth Selection Section */}
                 {(() => {
-                  const selectedSubTreatment = subTreatments?.find(st => st.id === treatmentPlan.sub_treatment_id);
+                  // Non-dental specialties have no tooth chart at all
+                  if (selectedPlanTreatment?.specialty && !selectedPlanTreatment.specialty.is_dental) return null;
+                  const selectedSubTreatment = subTreatments.find(st => st.id === treatmentPlan.sub_treatment_id);
                   const toothAssociation = selectedSubTreatment?.tooth_association || "not_related";
                   const isToothSelectionEnabled = toothAssociation !== "not_related";
                   const isSingleToothOnly = toothAssociation === "single_tooth";
@@ -1089,7 +985,7 @@ export default function PatientProfile() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {unfinishedSubTreatments.map((item:any) => (
+                {unfinishedSubTreatments.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>{item.treatment_name}</TableCell>
                     <TableCell>{item.sub_treatment_name}</TableCell>
@@ -1127,7 +1023,7 @@ export default function PatientProfile() {
                     <TableCell>
                       {format(new Date(appointment.scheduled_at), 'dd/MM/yyyy')}
                     </TableCell>
-                    <TableCell>{appointment.doctors?.full_name}</TableCell>
+                    <TableCell>{appointment.doctor?.full_name}</TableCell>
                     <TableCell>
                       <span className={`px-2 py-1 rounded text-xs ${
                         appointment.status === 'Completed' ? 'bg-green-100 text-green-800' :
@@ -1141,7 +1037,7 @@ export default function PatientProfile() {
                     <TableCell>
                       {appointment.treatment_records?.map((record, index) => (
                         <div key={index} className="text-sm">
-                          {record.treatments?.name} - {record.sub_treatments?.name} (السن {record.tooth_number})
+                          {record.treatment?.name} - {record.sub_treatment?.name} (السن {record.tooth_number})
                         </div>
                       ))}
                     </TableCell>
@@ -1340,20 +1236,20 @@ export default function PatientProfile() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {allTreatmentRecords.map((record: any) => (
+                  {allTreatmentRecords.map((record) => (
                     <TableRow key={record.id}>
                       <TableCell>
-                        {format(new Date(record.appointments?.scheduled_at), 'dd/MM/yyyy')}
+                        {fmtDate(record.appointment?.scheduled_at)}
                       </TableCell>
-                      <TableCell>{record.sub_treatments?.name}</TableCell>
+                      <TableCell>{record.sub_treatment?.name}</TableCell>
                       <TableCell>{record.tooth_number}</TableCell>
                       <TableCell>
                         {record.executed_steps && record.executed_steps.length > 0 ? (
                           <div className="text-sm space-y-1">
-                            {record.executed_steps.map((step: any, idx: number) => (
+                            {record.executed_steps.map((step, idx) => (
                               <div key={idx} className="flex items-center gap-1">
                                 <span className="text-green-600">✓</span>
-                                <span>{step.sub_treatment_steps?.step_name || '-'}</span>
+                                <span>{step || '-'}</span>
                               </div>
                             ))}
                           </div>
@@ -1377,12 +1273,12 @@ export default function PatientProfile() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        {record.appointments?.doctors?.full_name || '-'}
+                        {record.appointment?.doctor?.full_name || '-'}
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground max-w-xs whitespace-pre-wrap">
                           {record.treatment_notes 
-                            ? [...new Set(record.treatment_notes.split('\n').filter((line: string) => line.trim()))].join('\n') 
+                            ? [...new Set(record.treatment_notes.split('\n').filter((line) => line.trim()))].join('\n') 
                             : '-'}
                         </div>
                       </TableCell>
@@ -1447,19 +1343,21 @@ export default function PatientProfile() {
               <>
                 <div className="space-y-2">
                   <div className="text-sm">
-                    <span className="font-semibold">العلاج الفرعي:</span> {selectedTreatmentRecord.sub_treatments?.name}
+                    <span className="font-semibold">العلاج الفرعي:</span> {selectedTreatmentRecord.sub_treatment?.name}
                   </div>
                   <div className="text-sm">
                     <span className="font-semibold">رقم السن:</span> {selectedTreatmentRecord.tooth_number}
                   </div>
                   <div className="text-sm">
-                    <span className="font-semibold">التاريخ:</span> {format(new Date(selectedTreatmentRecord.appointments?.scheduled_at), 'dd/MM/yyyy')}
+                    <span className="font-semibold">التاريخ:</span> {fmtDate(selectedTreatmentRecord.appointment?.scheduled_at)}
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>الكلفة الحالية</Label>
                   <div className="font-semibold text-lg">
-                    {Math.round(selectedTreatmentRecord.actual_cost || 0).toLocaleString('en-US')}
+                    {Math.round(selectedTreatmentRecord.actual_cost_syp || 0).toLocaleString('en-US')} ل.س
+                    {" / "}
+                    ${Math.round(selectedTreatmentRecord.actual_cost_usd || 0).toLocaleString('en-US')}
                   </div>
                 </div>
                 <div className="space-y-4">
@@ -1554,25 +1452,25 @@ export default function PatientProfile() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                     <div>
                       <div className="text-2xl font-bold text-green-600">
-                        {Math.round(allPayments.filter(p => p.currency === 'SYP' || !p.currency).reduce((sum, payment) => sum + Number(payment.amount), 0)).toLocaleString('en-US')} ل.س
+                        {Math.round(balance?.total_paid_syp ?? 0).toLocaleString('en-US')} ل.س
                       </div>
                       <p className="text-sm text-muted-foreground">إجمالي المدفوعات بالليرة</p>
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-green-600">
-                        ${Math.round(allPayments.filter(p => p.currency === 'USD').reduce((sum, payment) => sum + Number(payment.amount), 0)).toLocaleString('en-US')}
+                        ${Math.round(balance?.total_paid_usd ?? 0).toLocaleString('en-US')}
                       </div>
                       <p className="text-sm text-muted-foreground">إجمالي المدفوعات بالدولار</p>
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-blue-600">
-                        {Math.round(allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_syp || 0), 0) || 0).toLocaleString('en-US')} ل.س
+                        {Math.round(balance?.total_cost_syp ?? 0).toLocaleString('en-US')} ل.س
                       </div>
                       <p className="text-sm text-muted-foreground">إجمالي تكلفة العلاجات بالليرة</p>
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-blue-600">
-                        ${Math.round(allTreatmentRecords?.reduce((sum, record) => sum + Number(record.actual_cost_usd || 0), 0) || 0).toLocaleString('en-US')}
+                        ${Math.round(balance?.total_cost_usd ?? 0).toLocaleString('en-US')}
                       </div>
                       <p className="text-sm text-muted-foreground">إجمالي تكلفة العلاجات بالدولار</p>
                     </div>
@@ -1621,13 +1519,13 @@ export default function PatientProfile() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          {format(new Date(payment.appointments?.scheduled_at), 'dd/MM/yyyy')}
+                          {fmtDate(payment.appointment?.scheduled_at)}
                         </TableCell>
                         <TableCell>
-                          {payment.appointments?.doctors?.full_name || '-'}
+                          {payment.appointment?.doctor?.full_name || '-'}
                         </TableCell>
                         <TableCell>
-                          {(payment as any).notes || '-'}
+                          {payment.notes || '-'}
                         </TableCell>
                       </TableRow>
                     ))}

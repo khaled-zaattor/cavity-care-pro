@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { appointmentsApi, doctorsApi, patientsApi, waitingListApi, apiErrorMessage, type PatientLite, type WaitingEntry } from "@/api/clinic";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,93 +17,63 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-interface Patient {
-  id: string;
-  full_name: string;
-  phone_number: string;
-}
+// "auto" = use the doctor of the patient's appointment today (if any)
+const AUTO_DOCTOR = "auto";
 
-interface Appointment {
-  id: string;
-  scheduled_at: string;
-  patient_id: string;
-  patients: {
-    full_name: string;
-  };
-}
-
-interface WaitingPatient {
-  id: string;
-  patient_id: string;
-  clinic_arrival_time: string;
-  examination_room_entry_time: string | null;
-  status: string;
-  appointment_id: string | null;
-  patients: {
-    full_name: string;
-    phone_number: string;
-  };
-  appointments: {
-    scheduled_at: string;
-  } | null;
-}
+type Patient = PatientLite;
+type WaitingPatient = WaitingEntry;
 
 export default function WaitingListManagement() {
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
-  const [waitingList, setWaitingList] = useState<WaitingPatient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Patient[]>([]);
   const [showOnlyTodayAppointments, setShowOnlyTodayAppointments] = useState(false);
-  const [todayAppointmentPatients, setTodayAppointmentPatients] = useState<Patient[]>([]);
   const [editingPatient, setEditingPatient] = useState<WaitingPatient | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editArrivalTime, setEditArrivalTime] = useState("");
   const [editExamTime, setEditExamTime] = useState("");
+  const [waitingDoctor, setWaitingDoctor] = useState<string>(AUTO_DOCTOR);
+
+  const { data: doctors = [] } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: () => doctorsApi.list(),
+  });
+
+  // لا يوجد realtime: تحديث لائحة الانتظار كل 5 ثوانٍ، وبعد كل عملية مباشرة
+  const { data: waitingData, refetch: refetchWaitingList } = useQuery({
+    queryKey: ["waiting-list"],
+    queryFn: () => waitingListApi.list(),
+    refetchInterval: 5000,
+  });
+  const waitingList: WaitingPatient[] = waitingData?.data ?? [];
+
+  const { data: todayAppointments = [] } = useQuery({
+    queryKey: ["appointments", "today"],
+    queryFn: () => appointmentsApi.today(),
+  });
+
+  // مرضى مواعيد اليوم (بدون تكرار، مرتبين بالاسم)
+  const todayAppointmentPatients: Patient[] = Array.from(
+    new Map(
+      todayAppointments
+        .filter((a) => a.patient)
+        .map((a) => [a.patient_id, a.patient as Patient] as const),
+    ).values(),
+  ).sort((a, b) => a.full_name.localeCompare(b.full_name, "ar"));
 
   useEffect(() => {
-    fetchPatients();
-    fetchTodayAppointments();
-    fetchWaitingList();
-
-    const channel = supabase
-      .channel('waiting-list-management')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'waiting_list'
-        },
-        () => {
-          fetchWaitingList();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    // القائمة الافتراضية قبل البحث (أول 200 مريض بالاسم)
+    patientsApi
+      .search("")
+      .then(setPatients)
+      .catch((error) => console.error('Error fetching patients:', error));
   }, []);
 
-  const fetchPatients = async () => {
-    const { data, error } = await supabase
-      .from('patients')
-      .select('id, full_name, phone_number')
-      .order('full_name', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching patients:', error);
-      return;
-    }
-
-  setPatients(data || []);
-  };
-
-  // Server-side search across ALL patients (avoids 1000-row default limit)
+  // Server-side search across ALL patients
   useEffect(() => {
     const q = searchQuery.trim();
     if (!open) return; // only search when combobox is open
@@ -112,84 +83,15 @@ export default function WaitingListManagement() {
     }
 
     const handler = setTimeout(async () => {
-      const like = `%${q}%`;
-      const { data, error } = await supabase
-        .from('patients')
-        .select('id, full_name, phone_number')
-        .or(`full_name.ilike.${like},phone_number.ilike.${like}`)
-        .order('full_name', { ascending: true })
-        .limit(200);
-      if (!error) setSearchResults(data || []);
+      try {
+        setSearchResults(await patientsApi.search(q));
+      } catch (error) {
+        console.error('Error searching patients:', error);
+      }
     }, 250);
 
     return () => clearTimeout(handler);
   }, [searchQuery, open]);
-
-  // Fetch today's appointment patients when filter is active and no search
-  useEffect(() => {
-    const fetchTodayPatients = async () => {
-      if (!showOnlyTodayAppointments || searchQuery.trim()) {
-        setTodayAppointmentPatients([]);
-        return;
-      }
-      const ids = Array.from(new Set(todayAppointments.map((a) => a.patient_id)));
-      if (ids.length === 0) {
-        setTodayAppointmentPatients([]);
-        return;
-      }
-      const { data, error } = await supabase
-        .from('patients')
-        .select('id, full_name, phone_number')
-        .in('id', ids)
-        .order('full_name', { ascending: true });
-      if (error) {
-        console.error('Error fetching today patients:', error);
-        setTodayAppointmentPatients([]);
-        return;
-      }
-      setTodayAppointmentPatients(data || []);
-    };
-    fetchTodayPatients();
-  }, [showOnlyTodayAppointments, searchQuery, todayAppointments]);
-
-  const fetchTodayAppointments = async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const { data, error } = await supabase
-      .from('appointments')
-      .select('id, scheduled_at, patient_id, patients(full_name)')
-      .gte('scheduled_at', today.toISOString())
-      .lt('scheduled_at', tomorrow.toISOString())
-      .order('scheduled_at');
-
-    if (error) {
-      console.error('Error fetching appointments:', error);
-      return;
-    }
-
-    setTodayAppointments(data || []);
-  };
-
-  const fetchWaitingList = async () => {
-    const { data, error } = await supabase
-      .from('waiting_list')
-      .select(`
-        *,
-        patients(full_name, phone_number),
-        appointments(scheduled_at)
-      `)
-      .order('clinic_arrival_time', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching waiting list:', error);
-      return;
-    }
-
-    setWaitingList(data || []);
-  };
 
   const addPatientToWaitingList = async (patientId: string) => {
     if (!patientId) {
@@ -197,24 +99,16 @@ export default function WaitingListManagement() {
       return;
     }
 
-    // Find if patient has appointment today
-    const appointment = todayAppointments.find(apt => apt.patient_id === patientId);
-
-    const { error } = await supabase
-      .from('waiting_list')
-      .insert({
-        patient_id: patientId,
-        appointment_id: appointment?.id || null,
-        clinic_arrival_time: new Date().toISOString(),
-        status: 'waiting'
-      });
-
-    if (error) {
-      toast.error("حدث خطأ أثناء إضافة المريض");
+    // الخادم يربط أول موعد اليوم ويختار طبيبه عند "تلقائي"
+    try {
+      await waitingListApi.add(patientId, waitingDoctor !== AUTO_DOCTOR ? waitingDoctor : null);
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
       console.error('Error adding patient:', error);
       return;
     }
 
+    refetchWaitingList();
     toast.success("تم إضافة المريض إلى لائحة الانتظار");
     setSelectedPatient("");
     setSearchQuery("");
@@ -222,35 +116,28 @@ export default function WaitingListManagement() {
   };
 
   const moveToExamination = async (id: string) => {
-    const { error } = await supabase
-      .from('waiting_list')
-      .update({
-        examination_room_entry_time: new Date().toISOString(),
-        status: 'in_examination'
-      })
-      .eq('id', id);
-
-    if (error) {
-      toast.error("حدث خطأ");
+    try {
+      await waitingListApi.enterExam(id);
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
       console.error('Error updating status:', error);
       return;
     }
 
+    refetchWaitingList();
     toast.success("تم نقل المريض إلى غرفة الفحص");
   };
 
   const completeVisit = async (id: string) => {
-    const { error } = await supabase
-      .from('waiting_list')
-      .update({ status: 'completed' })
-      .eq('id', id);
-
-    if (error) {
-      toast.error("حدث خطأ");
+    try {
+      await waitingListApi.complete(id);
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
       console.error('Error completing visit:', error);
       return;
     }
 
+    refetchWaitingList();
     toast.success("تم إنهاء الزيارة");
   };
 
@@ -262,32 +149,28 @@ export default function WaitingListManagement() {
       return;
     }
 
-    const { error } = await supabase
-      .from('waiting_list')
-      .update({ status: 'completed' })
-      .in('id', patientsInExam.map(p => p.id));
-
-    if (error) {
-      toast.error("حدث خطأ");
+    try {
+      await waitingListApi.completeAllInExam();
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
       console.error('Error completing visits:', error);
       return;
     }
 
+    refetchWaitingList();
     toast.success(`تم إنهاء زيارة ${patientsInExam.length} مريض`);
   };
 
   const removeFromWaitingList = async (id: string) => {
-    const { error } = await supabase
-      .from('waiting_list')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      toast.error("حدث خطأ");
+    try {
+      await waitingListApi.remove(id);
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
       console.error('Error removing patient:', error);
       return;
     }
 
+    refetchWaitingList();
     toast.success("تم إزالة المريض من لائحة الانتظار");
   };
 
@@ -306,25 +189,19 @@ export default function WaitingListManagement() {
       return;
     }
 
-    const updateData: any = {
-      clinic_arrival_time: new Date(editArrivalTime).toISOString(),
-    };
-
-    if (editExamTime) {
-      updateData.examination_room_entry_time = new Date(editExamTime).toISOString();
-    }
-
-    const { error } = await supabase
-      .from('waiting_list')
-      .update(updateData)
-      .eq('id', editingPatient.id);
-
-    if (error) {
-      toast.error("حدث خطأ أثناء التحديث");
+    try {
+      await waitingListApi.editTimes(
+        editingPatient.id,
+        new Date(editArrivalTime).toISOString(),
+        editExamTime ? new Date(editExamTime).toISOString() : null,
+      );
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
       console.error('Error updating times:', error);
       return;
     }
 
+    refetchWaitingList();
     toast.success("تم تحديث الأوقات بنجاح");
     setEditDialogOpen(false);
     setEditingPatient(null);
@@ -338,7 +215,7 @@ export default function WaitingListManagement() {
 
     // Prepare data for Excel
     const excelData = completedList.map(patient => ({
-      'اسم المريض': patient.patients.full_name,
+      'اسم المريض': patient.patient?.full_name ?? '',
       'وقت الوصول': format(new Date(patient.clinic_arrival_time), "dd/MM/yyyy HH:mm", { locale: ar }),
       'وقت الدخول للفحص': patient.examination_room_entry_time 
         ? format(new Date(patient.examination_room_entry_time), "dd/MM/yyyy HH:mm", { locale: ar })
@@ -358,18 +235,17 @@ export default function WaitingListManagement() {
     const fileName = `زيارات-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
     saveAs(data, fileName);
 
-    // Delete completed records
-    const { error } = await supabase
-      .from('waiting_list')
-      .delete()
-      .in('id', completedList.map(p => p.id));
-
-    if (error) {
-      toast.error("حدث خطأ أثناء حذف السجلات");
+    // Delete completed records (server: super admin only)
+    try {
+      // Only the rows that went into the Excel file.
+      await waitingListApi.clearCompleted(completedList.map((p) => p.id));
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
       console.error('Error deleting records:', error);
       return;
     }
 
+    refetchWaitingList();
     toast.success(`تم تصدير وحذف ${completedList.length} زيارة منتهية`);
   };
 
@@ -412,6 +288,22 @@ export default function WaitingListManagement() {
           <CardTitle>إضافة مريض إلى لائحة الانتظار</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 max-w-sm">
+            <Label>الطبيب</Label>
+            <Select value={waitingDoctor} onValueChange={setWaitingDoctor}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={AUTO_DOCTOR}>تلقائي (حسب موعد اليوم)</SelectItem>
+                {doctors.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    د. {d.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex items-center gap-3 mb-4">
             <Switch
               id="today-appointments"
@@ -502,17 +394,20 @@ export default function WaitingListManagement() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-semibold text-lg">
-                        {patient.patients.full_name}
+                        {patient.patient?.full_name}
                       </h3>
                       {getStatusBadge(patient.status)}
+                      {patient.doctor && (
+                        <Badge variant="outline">د. {patient.doctor.full_name}</Badge>
+                      )}
                     </div>
                     
                     <div className="grid grid-cols-3 gap-4 text-sm text-muted-foreground">
                       <div>
                         <p className="font-medium">وقت الموعد</p>
                         <p>
-                          {patient.appointments
-                            ? format(new Date(patient.appointments.scheduled_at), "p", { locale: ar })
+                          {patient.appointment
+                            ? format(new Date(patient.appointment.scheduled_at), "p", { locale: ar })
                             : "غير محدد"}
                         </p>
                       </div>
@@ -602,7 +497,7 @@ export default function WaitingListManagement() {
                   className="flex items-center justify-between p-3 border rounded-lg bg-muted/50"
                 >
                   <div>
-                    <p className="font-medium">{patient.patients.full_name}</p>
+                    <p className="font-medium">{patient.patient?.full_name}</p>
                     <p className="text-sm text-muted-foreground">
                       {format(new Date(patient.clinic_arrival_time), "p", { locale: ar })} - 
                       {patient.examination_room_entry_time && 

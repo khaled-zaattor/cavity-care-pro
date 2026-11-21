@@ -1,94 +1,67 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Calendar, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { dayEndIso, dayStartIso, doctorsApi, reportsApi } from "@/api/clinic";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { format } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export function SystemStatistics() {
+interface SystemStatisticsProps {
+  /** Lock the statistics to one doctor's books (used by "My Finances"). Hides the books filter. */
+  fixedDoctorId?: string;
+  title?: string;
+}
+
+export function SystemStatistics({ fixedDoctorId, title }: SystemStatisticsProps = {}) {
   const currentDate = new Date();
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const [startDate, setStartDate] = useState(format(firstDayOfMonth, 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(currentDate, 'yyyy-MM-dd'));
+  // Books filter: "all" | "clinic" | <independent doctor id>
+  const [books, setBooks] = useState<string>("all");
 
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ["system-stats", startDate, endDate],
-    queryFn: async () => {
-      const startDateTime = new Date(startDate);
-      startDateTime.setHours(0, 0, 0, 0);
-      const endDateTime = new Date(endDate);
-      endDateTime.setHours(23, 59, 59, 999);
-
-      const [patients, appointments, treatments, treatmentRecords, payments] = await Promise.all([
-        supabase
-          .from("patients")
-          .select("id", { count: "exact" })
-          .gte("created_at", startDateTime.toISOString())
-          .lte("created_at", endDateTime.toISOString()),
-        supabase
-          .from("appointments")
-          .select("id", { count: "exact" })
-          .gte("scheduled_at", startDateTime.toISOString())
-          .lte("scheduled_at", endDateTime.toISOString()),
-        supabase
-          .from("treatment_records")
-          .select("id", { count: "exact" })
-          .gte("performed_at", startDateTime.toISOString())
-          .lte("performed_at", endDateTime.toISOString()),
-        supabase
-          .from("treatment_records")
-          .select("actual_cost_syp, actual_cost_usd")
-          .gte("performed_at", startDateTime.toISOString())
-          .lte("performed_at", endDateTime.toISOString()),
-        supabase
-          .from("payments")
-          .select("amount, currency")
-          .gte("paid_at", startDateTime.toISOString())
-          .lte("paid_at", endDateTime.toISOString()),
-      ]);
-
-      const totalTreatmentCostSyp = treatmentRecords.data?.reduce(
-        (sum, record) => sum + Number(record.actual_cost_syp || 0), 
-        0
-      ) || 0;
-      const totalTreatmentCostUsd = treatmentRecords.data?.reduce(
-        (sum, record) => sum + Number(record.actual_cost_usd || 0), 
-        0
-      ) || 0;
-
-      const totalPaymentsSyp = payments.data?.filter(p => p.currency === 'SYP' || !p.currency).reduce(
-        (sum, payment) => sum + Number(payment.amount), 
-        0
-      ) || 0;
-      const totalPaymentsUsd = payments.data?.filter(p => p.currency === 'USD').reduce(
-        (sum, payment) => sum + Number(payment.amount), 
-        0
-      ) || 0;
-
-      return {
-        patientsCount: patients.count || 0,
-        appointmentsCount: appointments.count || 0,
-        treatmentsCount: treatments.count || 0,
-        treatmentCostSyp: totalTreatmentCostSyp,
-        treatmentCostUsd: totalTreatmentCostUsd,
-        totalPaymentsSyp: totalPaymentsSyp,
-        totalPaymentsUsd: totalPaymentsUsd,
-        totalRevenueSyp: totalPaymentsSyp - totalTreatmentCostSyp,
-        totalRevenueUsd: totalPaymentsUsd - totalTreatmentCostUsd,
-      };
-    },
+  const { data: doctors } = useQuery({
+    queryKey: ["doctors"],
+    enabled: !fixedDoctorId,
+    queryFn: () => doctorsApi.list(),
   });
 
+  const independentDoctors = doctors?.filter((d) => d.has_own_books) ?? [];
+  // An independent doctor's books are enforced by the server whatever we send.
+  const booksParam = fixedDoctorId ?? books;
+
+  // Sums are computed by the server in SQL (the old client-side sums stopped at 1000 rows).
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ["system-stats", startDate, endDate, booksParam],
+    queryFn: () => reportsApi.stats(dayStartIso(startDate), dayEndIso(endDate), booksParam),
+  });
+
+  const stats = raw && {
+    patientsCount: raw.new_patients_count ?? 0,
+    appointmentsCount: raw.appointments_count,
+    treatmentsCount: raw.treatments_count,
+    treatmentCostSyp: raw.treatment_cost_syp,
+    treatmentCostUsd: raw.treatment_cost_usd,
+    totalPaymentsSyp: raw.total_payments_syp,
+    totalPaymentsUsd: raw.total_payments_usd,
+    totalRevenueSyp: raw.revenue_syp,
+    totalRevenueUsd: raw.revenue_usd,
+  };
+
+  // Patients are shared by all doctors, so "new patients" only makes sense for the whole clinic
+  const showPatients = !fixedDoctorId && books === "all";
 
   const statCards = [
-    {
-      title: "المرضى الجدد",
-      value: stats?.patientsCount?.toString() || "0",
-      icon: Users,
-      color: "text-blue-600",
-    },
+    ...(showPatients
+      ? [{
+          title: "المرضى الجدد",
+          value: stats?.patientsCount?.toString() || "0",
+          icon: Users,
+          color: "text-blue-600",
+        }]
+      : []),
     {
       title: "المواعيد",
       value: stats?.appointmentsCount?.toString() || "0",
@@ -143,10 +116,29 @@ export function SystemStatistics() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4">
         <div>
-          <h2 className="text-2xl font-bold">إحصائيات النظام</h2>
+          <h2 className="text-2xl font-bold">{title ?? "إحصائيات النظام"}</h2>
           <p className="text-muted-foreground">عرض الإحصائيات حسب الفترة الزمنية</p>
         </div>
-        <div className="flex gap-4 items-end">
+        <div className="flex flex-col md:flex-row gap-4 md:items-end">
+          {!fixedDoctorId && (
+            <div className="flex-1">
+              <Label>الحسابات</Label>
+              <Select value={books} onValueChange={setBooks}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">الكل</SelectItem>
+                  <SelectItem value="clinic">حسابات العيادة</SelectItem>
+                  {independentDoctors.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      حسابات د. {d.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex-1">
             <Label htmlFor="start-date">من تاريخ</Label>
             <Input

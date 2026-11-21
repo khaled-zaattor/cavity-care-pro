@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Search, Plus, Calendar, FileText, Edit, Trash2, FileDown, Upload, ChevronLeft, ChevronRight } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { patientsApi, apiErrorMessage, type PatientInput } from "@/api/clinic";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from 'xlsx';
@@ -37,6 +37,25 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+/** form state -> API body (empty strings become null) */
+const toPatientInput = (p: {
+  full_name: string;
+  date_of_birth?: string | null;
+  phone_number?: string | null;
+  contact?: string | null;
+  medical_notes?: string | null;
+  address?: string | null;
+  job?: string | null;
+}): PatientInput => ({
+  full_name: p.full_name.trim(),
+  date_of_birth: p.date_of_birth || null,
+  phone_number: p.phone_number || null,
+  contact: p.contact || null,
+  medical_notes: p.medical_notes || null,
+  address: p.address || null,
+  job: p.job || null,
+});
+
 interface Patient {
   id: string;
   full_name: string;
@@ -46,6 +65,7 @@ interface Patient {
   medical_notes: string | null;
   address: string | null;
   job: string | null;
+  appointments_count?: number;
 }
 
 export default function Patients() {
@@ -69,25 +89,7 @@ export default function Patients() {
   
   const exportToExcel = async () => {
     try {
-      // جلب المرضى على دفعات لتجاوز حد 1000 صف لكل طلب
-      const pageSize = 1000;
-      let offset = 0;
-      let allPatients: any[] = [];
-
-      while (true) {
-        const { data, error } = await supabase
-          .from("patients")
-          .select("*")
-          .order("full_name")
-          .range(offset, offset + pageSize - 1);
-
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-
-        allPatients = allPatients.concat(data);
-        if (data.length < pageSize) break; // آخر دفعة
-        offset += pageSize;
-      }
+      const allPatients = await patientsApi.all({ search: searchTerm || undefined });
 
       if (!allPatients || allPatients.length === 0) {
         toast({ title: "لا توجد بيانات", description: "لا يوجد مرضى للتصدير" });
@@ -114,7 +116,7 @@ export default function Patients() {
         for (let C = range.s.c; C <= range.e.c; ++C) {
           const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
           if (!cell) continue;
-          cell.s = { alignment: { horizontal: 'right', vertical: 'center' } } as any;
+          cell.s = { alignment: { horizontal: 'right', vertical: 'center' } };
         }
       }
       
@@ -159,7 +161,7 @@ export default function Patients() {
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         
         // تخطي الصف الأول (العناوين)
-        const rows = jsonData.slice(1) as any[][];
+        const rows = jsonData.slice(1) as (string | number | null | undefined)[][];
         const validPatients = [];
         
         for (const row of rows) {
@@ -170,7 +172,7 @@ export default function Patients() {
           if (row[1]) {
             const dateValue = row[1].toString().trim();
             // التحقق إذا كان التاريخ بصيغة dd/mm/yyyy أو dd-mm-yyyy
-            const dateMatch = dateValue.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+            const dateMatch = dateValue.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
             if (dateMatch) {
               const day = dateMatch[1].padStart(2, '0');
               const month = dateMatch[2].padStart(2, '0');
@@ -214,53 +216,29 @@ export default function Patients() {
           return;
         }
         
-        // جلب جميع المرضى الموجودين للتحقق من التكرار
-        const { data: existingPatients, error: fetchError } = await supabase
-          .from("patients")
-          .select("full_name, phone_number");
-          
-        if (fetchError) {
-          throw fetchError;
-        }
-        
-        // إنشاء مجموعة من أسماء المرضى الموجودين فقط
-        const existingNamesSet = new Set(
-          (existingPatients || []).map(p => p.full_name.toLowerCase().trim())
-        );
-        
-        // تصفية المرضى الجدد فقط (التحقق من الاسم فقط - رقم الهاتف يمكن أن يتكرر)
-        const newPatients = validPatients.filter(p => 
-          !existingNamesSet.has(p.full_name.toLowerCase().trim())
-        );
-        
-        const skippedCount = validPatients.length - newPatients.length;
-        
-        if (newPatients.length === 0) {
-          toast({
-            title: "تنبيه",
-            description: `تم تخطي ${skippedCount} مريض لأنهم موجودون مسبقاً (نفس الاسم)`,
-          });
-          setImportingFile(false);
-          return;
-        }
-        
-        // إدراج المرضى الجدد فقط
-        const { data: insertedData, error } = await supabase
-          .from("patients")
-          .insert(newPatients)
-          .select();
-          
-        if (error) {
+        // الخادم يتخطى الأسماء الموجودة مسبقاً والمكررة داخل الملف
+        let result: { inserted: number; skipped: number };
+        try {
+          result = await patientsApi.import(validPatients.map(toPatientInput));
+        } catch (err) {
           toast({
             title: "خطأ في الاستيراد",
-            description: "فشل في حفظ البيانات في قاعدة البيانات",
+            description: apiErrorMessage(err),
             variant: "destructive",
           });
+          return;
+        }
+
+        queryClient.invalidateQueries({ queryKey: ["patients"] });
+        if (result.inserted === 0) {
+          toast({
+            title: "تنبيه",
+            description: `تم تخطي ${result.skipped} مريض لأنهم موجودون مسبقاً (نفس الاسم)`,
+          });
         } else {
-          queryClient.invalidateQueries({ queryKey: ["patients"] });
-          const message = skippedCount > 0 
-            ? `تم استيراد ${newPatients.length} مريض، وتم تخطي ${skippedCount} مريض مكرر`
-            : `تم استيراد ${newPatients.length} مريض بنجاح`;
+          const message = result.skipped > 0
+            ? `تم استيراد ${result.inserted} مريض، وتم تخطي ${result.skipped} مريض مكرر`
+            : `تم استيراد ${result.inserted} مريض بنجاح`;
           toast({
             title: "نجح الاستيراد",
             description: message,
@@ -285,91 +263,40 @@ export default function Patients() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  // جلب جميع المواعيد لتحديد المرضى بدون مواعيد
-  const { data: appointments } = useQuery({
-    queryKey: ["all-appointments-patient-ids"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("appointments")
-        .select("patient_id");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: patients, isLoading, error } = useQuery({
-    queryKey: ["patients", searchTerm],
-    queryFn: async () => {
-      // جلب جميع المرضى على دفعات لتجاوز حد 1000 صف
-      const pageSize = 1000;
-      let offset = 0;
-      let allPatients: Patient[] = [];
-
-      while (true) {
-        let query = supabase.from("patients").select("*");
-        
-        if (searchTerm) {
-          query = query.ilike("full_name", `%${searchTerm}%`);
-        }
-        
-        const { data, error } = await query
-          .order("full_name")
-          .range(offset, offset + pageSize - 1);
-        
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        
-        allPatients = allPatients.concat(data as Patient[]);
-        if (data.length < pageSize) break;
-        offset += pageSize;
-      }
-
-      return allPatients;
-    },
+  // ترقيم الصفحات والفلاتر (المكررين / بدون مواعيد) تتم على الخادم
+  const { data: patientsPage, isLoading, error } = useQuery({
+    queryKey: ["patients", searchTerm, filterMode, currentPage],
+    queryFn: () =>
+      patientsApi.list({
+        search: searchTerm || undefined,
+        filter: filterMode === "all" ? undefined : filterMode,
+        page: currentPage,
+        per_page: itemsPerPage,
+      }),
     retry: 1,
     staleTime: 0,
+    placeholderData: (prev) => prev,
   });
 
-  // تصفية المرضى حسب الفلتر المحدد
-  const filteredPatients = (() => {
-    if (!patients) return [];
-    
-    if (filterMode === "duplicates") {
-      // إيجاد المرضى المكررين (نفس الاسم)
-      const nameCount = new Map<string, number>();
-      patients.forEach(p => {
-        const name = p.full_name.toLowerCase().trim();
-        nameCount.set(name, (nameCount.get(name) || 0) + 1);
-      });
-      return patients.filter(p => 
-        nameCount.get(p.full_name.toLowerCase().trim())! > 1
-      );
-    }
-    
-    if (filterMode === "no_appointments") {
-      // المرضى الذين ليس لديهم مواعيد
-      const patientIdsWithAppointments = new Set(
-        (appointments || []).map(a => a.patient_id)
-      );
-      return patients.filter(p => !patientIdsWithAppointments.has(p.id));
-    }
-    
-    return patients;
-  })();
+  const patients = patientsPage?.data as Patient[] | undefined;
 
-  if (error) {
-    toast({
-      title: "خطأ",
-      description: "فشل في تحميل قائمة المرضى",
-      variant: "destructive",
-    });
-  }
+  // في فلتر المكررين: تمييز المرضى الذين ليس لديهم مواعيد (العدد يأتي مع القائمة)
+  const noAppointmentIds = new Set((patients ?? []).filter((p) => p.appointments_count === 0).map((p) => p.id));
+
+  // toast في effect وليس أثناء الرسم، وإلا تحدث حلقة إعادة رسم لا نهائية
+  useEffect(() => {
+    if (error) {
+      toast({
+        title: "خطأ",
+        description: "فشل في تحميل قائمة المرضى",
+        variant: "destructive",
+      });
+    }
+  }, [error, toast]);
 
   const createPatientMutation = useMutation({
     mutationFn: async (patient: typeof newPatient) => {
-      const { data, error } = await supabase.from("patients").insert([patient]).select();
-      if (error) throw error;
-      return data;
+      return patientsApi.create(toPatientInput(patient));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] });
@@ -391,7 +318,7 @@ export default function Patients() {
     onError: (error) => {
       toast({
         title: "خطأ",
-        description: "فشل في إضافة المريض",
+        description: apiErrorMessage(error),
         variant: "destructive",
       });
     },
@@ -399,21 +326,7 @@ export default function Patients() {
 
   const updatePatientMutation = useMutation({
     mutationFn: async (patient: Patient) => {
-      const { data, error } = await supabase
-        .from("patients")
-        .update({
-          full_name: patient.full_name,
-          date_of_birth: patient.date_of_birth,
-          phone_number: patient.phone_number,
-          contact: patient.contact,
-          medical_notes: patient.medical_notes,
-          address: patient.address,
-          job: patient.job,
-        })
-        .eq("id", patient.id)
-        .select();
-      if (error) throw error;
-      return data;
+      return patientsApi.update(patient.id, toPatientInput(patient));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] });
@@ -427,7 +340,7 @@ export default function Patients() {
     onError: (error) => {
       toast({
         title: "خطأ",
-        description: "فشل في تحديث بيانات المريض",
+        description: apiErrorMessage(error),
         variant: "destructive",
       });
     },
@@ -435,8 +348,7 @@ export default function Patients() {
 
   const deletePatientMutation = useMutation({
     mutationFn: async (patientId: string) => {
-      const { error } = await supabase.from("patients").delete().eq("id", patientId);
-      if (error) throw error;
+      await patientsApi.remove(patientId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] });
@@ -445,42 +357,19 @@ export default function Patients() {
         description: "تم حذف المريض بنجاح",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "خطأ",
-        description: "فشل في حذف المريض",
+        description: apiErrorMessage(error),
         variant: "destructive",
       });
     },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // التحقق من عدم تكرار الاسم
-    const { data: existingPatients, error: checkError } = await supabase
-      .from("patients")
-      .select("id, full_name")
-      .ilike("full_name", newPatient.full_name.trim());
-    
-    if (checkError) {
-      toast({
-        title: "خطأ",
-        description: "فشل في التحقق من الاسم",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (existingPatients && existingPatients.length > 0) {
-      toast({
-        title: "خطأ: اسم مكرر",
-        description: `يوجد مريض بنفس الاسم "${existingPatients[0].full_name}" مسبقاً. لا يمكن إضافة مريض باسم مكرر.`,
-        variant: "destructive",
-      });
-      return;
-    }
-    
+    // الخادم يرفض الأسماء المكررة (422) برسالة عربية
     createPatientMutation.mutate(newPatient);
   };
 
@@ -501,10 +390,10 @@ export default function Patients() {
   };
 
   // Pagination calculations
-  const totalPatients = filteredPatients?.length || 0;
-  const totalPages = Math.ceil(totalPatients / itemsPerPage);
+  const totalPatients = patientsPage?.total ?? 0;
+  const totalPages = patientsPage?.last_page ?? 0;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedPatients = filteredPatients?.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedPatients = patients;
 
   // Reset page when search or filter changes
   const handleSearchChange = (value: string) => {
@@ -582,7 +471,7 @@ export default function Patients() {
             <Button 
               size="sm" 
               onClick={exportToExcel}
-              disabled={!patients || patients.length === 0}
+              disabled={totalPatients === 0}
               className="w-full sm:w-auto bg-primary hover:bg-primary/90"
             >
               <FileDown className="ml-2 h-4 w-4" />
@@ -692,8 +581,7 @@ export default function Patients() {
                   </TableHeader>
                   <TableBody>
                     {paginatedPatients?.map((patient) => {
-                      const patientIdsWithAppointments = new Set((appointments || []).map(a => a.patient_id));
-                      const hasNoAppointments = filterMode === "duplicates" && !patientIdsWithAppointments.has(patient.id);
+                      const hasNoAppointments = filterMode === "duplicates" && !!noAppointmentIds?.has(patient.id);
                       return (
                       <TableRow 
                         key={patient.id}
@@ -761,8 +649,7 @@ export default function Patients() {
               {/* Mobile Cards */}
               <div className="md:hidden space-y-4">
                 {paginatedPatients?.map((patient) => {
-                  const patientIdsWithAppointments = new Set((appointments || []).map(a => a.patient_id));
-                  const hasNoAppointments = filterMode === "duplicates" && !patientIdsWithAppointments.has(patient.id);
+                  const hasNoAppointments = filterMode === "duplicates" && !!noAppointmentIds?.has(patient.id);
                   return (
                   <Card 
                     key={patient.id} 

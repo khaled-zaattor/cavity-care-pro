@@ -1,69 +1,19 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { waitingListApi, type WaitingEntry } from "@/api/clinic";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-interface WaitingPatient {
-  id: string;
-  patient_id: string;
-  clinic_arrival_time: string;
-  examination_room_entry_time: string | null;
-  status: string;
-  appointment_id: string | null;
-  patients: {
-    full_name: string;
-  };
-  appointments: {
-    scheduled_at: string;
-  } | null;
-}
-
 export default function WaitingListDisplay() {
-  const [waitingPatients, setWaitingPatients] = useState<WaitingPatient[]>([]);
-
-  useEffect(() => {
-    fetchWaitingPatients();
-    
-    const channel = supabase
-      .channel('waiting-list-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'waiting_list'
-        },
-        () => {
-          fetchWaitingPatients();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const fetchWaitingPatients = async () => {
-    const { data, error } = await supabase
-      .from('waiting_list')
-      .select(`
-        *,
-        patients(full_name),
-        appointments(scheduled_at)
-      `)
-      .in('status', ['waiting', 'in_examination'])
-      .order('clinic_arrival_time', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching waiting list:', error);
-      return;
-    }
-
-    setWaitingPatients(data || []);
-  };
+  // لا يوجد realtime: تحديث كل 5 ثوانٍ (يحدّث أيضاً وقت الانتظار المعروض)
+  const { data } = useQuery({
+    queryKey: ["waiting-list", "active"],
+    queryFn: () => waitingListApi.list(true),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+  });
+  const waitingPatients: WaitingEntry[] = data?.data ?? [];
 
   const getStatusBadge = (status: string) => {
     if (status === 'waiting') {
@@ -100,15 +50,18 @@ export default function WaitingListDisplay() {
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <h2 className="text-4xl font-bold mb-4 text-foreground">
-                      {patient.patients.full_name}
+                      {patient.patient?.full_name}
                     </h2>
+                    {patient.doctor && (
+                      <p className="text-2xl text-primary mb-4">د. {patient.doctor.full_name}</p>
+                    )}
                     
                     <div className="grid grid-cols-3 gap-6 text-xl">
                       <div>
                         <p className="text-muted-foreground mb-2">وقت الموعد</p>
                         <p className="font-semibold text-foreground">
-                          {patient.appointments
-                            ? format(new Date(patient.appointments.scheduled_at), "p", { locale: ar })
+                          {patient.appointment
+                            ? format(new Date(patient.appointment.scheduled_at), "p", { locale: ar })
                             : "غير محدد"}
                         </p>
                       </div>

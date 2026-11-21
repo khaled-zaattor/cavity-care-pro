@@ -17,8 +17,25 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import {
+  appointmentsApi,
+  patientsApi,
+  doctorsApi,
+  catalogApi,
+  moneyApi,
+  apiErrorMessage,
+  dayStartIso,
+  dayEndIso,
+  type Appointment,
+  type AppointmentFilters,
+  type AppointmentStatus,
+  type Currency,
+  type Payment,
+  type SubTreatmentStep,
+  type TreatmentPlan,
+  type TreatmentRecord,
+} from "@/api/clinic";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -26,10 +43,32 @@ import { cn } from "@/lib/utils";
 import { z } from "zod";
 import { format } from "date-fns";
 
+interface BulkDeletePreview {
+  appointments: Appointment[];
+  payments: Payment[];
+  treatment_records: TreatmentRecord[];
+  totals: { payments_syp: number; payments_usd: number };
+}
+
+type ImportRow = { patient_name: string; doctor_name: string; scheduled_at: string; notes?: string | null; status?: AppointmentStatus };
+
+const APPOINTMENT_STATUSES: AppointmentStatus[] = ["Scheduled", "Completed", "Cancelled"];
+
+/** "1,250.5" -> 1250.5, "" -> null */
+const toNumberOrNull = (value: string): number | null => {
+  const clean = value.replace(/,/g, "").trim();
+  if (!clean) return null;
+  const n = parseFloat(clean);
+  return isNaN(n) ? null : n;
+};
+
+const sortSteps = (steps?: SubTreatmentStep[]) => [...(steps ?? [])].sort((a, b) => a.step_order - b.step_order);
+
+const emptyAppointmentForm = { patient_id: "", doctor_id: "", specialty_id: "", scheduled_at: "", notes: "" };
+
 export default function Appointments() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
-  const [isStepsDialogOpen, setIsStepsDialogOpen] = useState(false);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
   const [resumeTreatmentNotes, setResumeTreatmentNotes] = useState("");
   const [isExecutePlanDialogOpen, setIsExecutePlanDialogOpen] = useState(false);
@@ -38,19 +77,21 @@ export default function Appointments() {
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [bulkDeleteStartDate, setBulkDeleteStartDate] = useState("");
   const [bulkDeleteEndDate, setBulkDeleteEndDate] = useState("");
-  const [bulkDeletePreview, setBulkDeletePreview] = useState<any>(null);
+  const [bulkDeletePreview, setBulkDeletePreview] = useState<BulkDeletePreview | null>(null);
   const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
   const [isAddPaymentDialogOpen, setIsAddPaymentDialogOpen] = useState(false);
   const [newPaymentAmount, setNewPaymentAmount] = useState("");
   const [newPaymentCurrency, setNewPaymentCurrency] = useState("SYP");
-  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
-  const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<any>(null);
-  const [selectedTreatmentPlan, setSelectedTreatmentPlan] = useState<any>(null);
+  const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState<TreatmentRecord | null>(null);
+  const [selectedTreatmentPlan, setSelectedTreatmentPlan] = useState<TreatmentPlan | null>(null);
   const [openPatientCombobox, setOpenPatientCombobox] = useState(false);
   const [patientSearchQuery, setPatientSearchQuery] = useState("");
-  const [editingAppointment, setEditingAppointment] = useState<any>(null);
+  const [selectedPatientLabel, setSelectedPatientLabel] = useState("");
+  const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
+  const [page, setPage] = useState(1);
 
   const availableColumns = [
     { id: 'patient_name', label: 'اسم المريض' },
@@ -130,12 +171,7 @@ export default function Appointments() {
     filterPatientName
   );
 
-  const [newAppointment, setNewAppointment] = useState({
-    patient_id: "",
-    doctor_id: "",
-    scheduled_at: "",
-    notes: "",
-  });
+  const [newAppointment, setNewAppointment] = useState(emptyAppointmentForm);
 
   const [teethType, setTeethType] = useState<"adult" | "child">("adult");
   const [treatmentRecord, setTreatmentRecord] = useState({
@@ -153,7 +189,7 @@ export default function Appointments() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { canManagePayments } = useUserRole();
+  const { canManagePayments, isIndependentDoctor, doctorId: myDoctorId } = useUserRole();
 
   // Debounce patient name filter
   useEffect(() => {
@@ -163,6 +199,11 @@ export default function Appointments() {
 
     return () => clearTimeout(timer);
   }, [filterPatientName]);
+
+  // Back to the first page whenever the filters change
+  useEffect(() => {
+    setPage(1);
+  }, [filterDoctor, filterStartDate, filterEndDate, filterStatus, debouncedPatientName]);
 
   // Load existing notes from appointment when dialog opens
   useEffect(() => {
@@ -174,76 +215,27 @@ export default function Appointments() {
     }
   }, [isRecordDialogOpen, selectedAppointment]);
 
-  const { data: appointments, isLoading } = useQuery({
-    queryKey: ["appointments", filterDoctor, filterStartDate, filterEndDate, filterStatus, debouncedPatientName],
-    queryFn: async () => {
-      let query = supabase
-        .from("appointments")
-        .select(`
-          *,
-          patients (full_name, phone_number),
-          doctors (full_name, specialty)
-        `);
+  // Server-side filters shared by the table and the Excel export
+  const appointmentFilters: AppointmentFilters = {
+    doctor_id: filterDoctor && filterDoctor !== "all" ? filterDoctor : undefined,
+    status: filterStatus && filterStatus !== "all" ? (filterStatus as AppointmentStatus) : undefined,
+    from: filterStartDate ? dayStartIso(filterStartDate) : undefined,
+    to: filterEndDate ? dayEndIso(filterEndDate) : undefined,
+    patient_name: debouncedPatientName.trim() || undefined,
+  };
 
-      // Apply doctor filter
-      if (filterDoctor && filterDoctor !== "all") {
-        query = query.eq("doctor_id", filterDoctor);
-      }
-
-      // Apply date range filter
-      if (filterStartDate && filterEndDate) {
-        const startOfDay = new Date(filterStartDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(filterEndDate);
-        endOfDay.setHours(23, 59, 59, 999);
-
-        query = query
-          .gte("scheduled_at", startOfDay.toISOString())
-          .lte("scheduled_at", endOfDay.toISOString());
-      } else if (filterStartDate) {
-        // If only start date is selected, filter from that date onwards
-        const startOfDay = new Date(filterStartDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        query = query.gte("scheduled_at", startOfDay.toISOString());
-      } else if (filterEndDate) {
-        // If only end date is selected, filter up to that date
-        const endOfDay = new Date(filterEndDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        query = query.lte("scheduled_at", endOfDay.toISOString());
-      }
-
-      // Apply status filter
-      if (filterStatus && filterStatus !== "all") {
-        query = query.eq("status", filterStatus as "Scheduled" | "Completed" | "Cancelled");
-      }
-
-      const { data, error } = await query.order("scheduled_at", { ascending: false });
-      if (error) throw error;
-
-      // Apply patient name filter (client-side since we're filtering on joined data)
-      if (debouncedPatientName && data) {
-        return data.filter(apt =>
-          apt.patients?.full_name?.toLowerCase().includes(debouncedPatientName.toLowerCase())
-        );
-      }
-
-      return data;
-    },
+  const { data: appointmentsPage, isLoading } = useQuery({
+    queryKey: ["appointments", filterDoctor, filterStartDate, filterEndDate, filterStatus, debouncedPatientName, page],
+    queryFn: () => appointmentsApi.list({ ...appointmentFilters, page }),
+    placeholderData: keepPreviousData,
   });
+  const appointments = appointmentsPage?.data;
+  const lastPage = appointmentsPage?.last_page ?? 1;
 
   const { data: patients } = useQuery({
-    queryKey: ["patients", patientSearchQuery],
-    queryFn: async () => {
-      let query = supabase.from("patients").select("id, full_name");
-
-      if (patientSearchQuery) {
-        query = query.ilike("full_name", `%${patientSearchQuery}%`);
-      }
-
-      const { data, error } = await query.order("full_name");
-      if (error) throw error;
-      return data;
-    },
+    queryKey: ["patients-search", patientSearchQuery],
+    queryFn: () => patientsApi.search(patientSearchQuery.trim()),
+    enabled: isDialogOpen,
   });
 
   // Query to get future appointments for selected patient
@@ -251,320 +243,160 @@ export default function Appointments() {
     queryKey: ["patient-future-appointments", newAppointment.patient_id],
     queryFn: async () => {
       if (!newAppointment.patient_id) return [];
-      const now = new Date().toISOString();
-      const { data, error } = await supabase
-        .from("appointments")
-        .select(`
-          id,
-          scheduled_at,
-          status,
-          doctors (full_name)
-        `)
-        .eq("patient_id", newAppointment.patient_id)
-        .gte("scheduled_at", now)
-        .order("scheduled_at", { ascending: true });
-      if (error) throw error;
-      return data;
+      const res = await appointmentsApi.list({ patient_id: newAppointment.patient_id, upcoming: true });
+      return res.data;
     },
     enabled: !!newAppointment.patient_id,
   });
 
   const { data: doctors } = useQuery({
     queryKey: ["doctors"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("doctors").select("id, full_name, specialty");
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => doctorsApi.list(),
   });
 
-  const { data: treatments } = useQuery({
-    queryKey: ["treatments"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("treatments").select("*");
-      if (error) throw error;
-      return data;
-    },
+  // Specialty shown for an appointment: its own, else the doctor's primary one
+  const specialtyName = (apt: Appointment) =>
+    apt.specialty?.name_ar || doctors?.find((d) => d.id === apt.doctor_id)?.specialty || "";
+
+  // Doctor chosen in the create/edit dialog (specialty select only when they have several)
+  const formDoctor = doctors?.find((d) => d.id === newAppointment.doctor_id);
+  const formDoctorHasManySpecialties = (formDoctor?.specialties?.length ?? 0) > 1;
+
+  const { data: allTreatments } = useQuery({
+    queryKey: ["treatments", "all-visible"],
+    queryFn: () => catalogApi.list(),
   });
 
-  const { data: subTreatments } = useQuery({
-    queryKey: ["sub-treatments", treatmentRecord.treatment_id],
-    queryFn: async () => {
-      if (!treatmentRecord.treatment_id) return [];
-      const { data, error } = await supabase
-        .from("sub_treatments")
-        .select("*")
-        .eq("treatment_id", treatmentRecord.treatment_id);
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!treatmentRecord.treatment_id,
-  });
+  // Only offer the catalog that belongs to the selected appointment's doctor:
+  // an independent doctor's own treatments, otherwise the clinic catalog (doctor_id NULL).
+  const selectedAppointmentDoctor = doctors?.find((d) => d.id === selectedAppointment?.doctor_id);
+  const catalogDoctorId = selectedAppointmentDoctor?.has_own_books ? selectedAppointmentDoctor.id : null;
+  const treatments = allTreatments?.filter((t) => (t.doctor_id ?? null) === catalogDoctorId);
+  const selectedTreatment = treatments?.find((t) => t.id === treatmentRecord.treatment_id);
+  const subTreatments = selectedTreatment?.sub_treatments ?? [];
+  const selectedSubTreatment = subTreatments.find((st) => st.id === treatmentRecord.sub_treatment_id);
+  const treatmentSteps = sortSteps(selectedSubTreatment?.steps);
+  const toothAssociation = selectedSubTreatment?.tooth_association || "not_related";
+  const isToothSelectionEnabled = toothAssociation !== "not_related" && selectedTreatment?.specialty?.is_dental !== false;
+  const isSingleToothOnly = toothAssociation === "single_tooth";
 
-  // Query to get steps for selected sub-treatment
-  const { data: treatmentSteps } = useQuery({
-    queryKey: ["treatment-steps", treatmentRecord.sub_treatment_id],
-    queryFn: async () => {
-      if (!treatmentRecord.sub_treatment_id) return [];
-      const { data, error } = await supabase
-        .from("sub_treatment_steps")
-        .select("*")
-        .eq("sub_treatment_id", treatmentRecord.sub_treatment_id)
-        .order("step_order");
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!treatmentRecord.sub_treatment_id,
-  });
+  // Any sub-treatment of the visible catalog (plans / resumed records)
+  const findSubTreatment = (id?: string | null) =>
+    id ? allTreatments?.flatMap((t) => t.sub_treatments ?? []).find((st) => st.id === id) : undefined;
 
   // Query to get completed steps for an appointment
   const { data: completedSteps } = useQuery({
     queryKey: ["completed-steps", selectedAppointment?.id],
-    queryFn: async () => {
-      if (!selectedAppointment?.id) return [];
-      const { data, error } = await supabase
-        .from("appointment_treatment_steps")
-        .select("*")
-        .eq("appointment_id", selectedAppointment.id);
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => (selectedAppointment?.id ? appointmentsApi.completedSteps(selectedAppointment.id) : Promise.resolve([] as string[])),
     enabled: !!selectedAppointment?.id,
   });
 
-  // Query to get unfinished treatments for a patient
+  // Unfinished treatments for the patient (incomplete + de-duplicated server-side)
   const { data: unfinishedTreatments, error: unfinishedError } = useQuery({
     queryKey: ["unfinished-treatments", selectedAppointment?.patient_id],
-    queryFn: async () => {
-      if (!selectedAppointment?.patient_id) return [];
-
-      // Get all treatment records for this patient by joining through appointments
-      const { data: allRecords, error: recordsError } = await supabase
-        .from("treatment_records")
-        .select(`
-          *,
-          treatments (name),
-          sub_treatments (name),
-          appointments!inner (patient_id)
-        `)
-        .eq("appointments.patient_id", selectedAppointment.patient_id)
-        .order("performed_at", { ascending: false });
-
-      if (recordsError) {
-        console.error("Error fetching treatment records:", recordsError);
-        throw recordsError;
-      }
-
-      // Filter for incomplete records (is_completed is false or null)
-      const incompleteRecords = (allRecords || []).filter(
-        (record) => record.is_completed === false || record.is_completed === null
-      );
-
-      // De-duplicate: a treatment may have multiple continuation sessions (multiple records)
-      // We keep only the most recent record per (treatment_id, sub_treatment_id, tooth_number)
-      const uniqueMap = new Map<string, any>();
-      for (const record of incompleteRecords) {
-        const key = `${record.treatment_id}_${record.sub_treatment_id}_${record.tooth_number}`;
-        if (!uniqueMap.has(key)) {
-          uniqueMap.set(key, record);
-        }
-      }
-
-      return Array.from(uniqueMap.values()).map((record) => ({
-        ...record,
-        treatment_name: record.treatments?.name,
-        sub_treatment_name: record.sub_treatments?.name,
-        patient_id: selectedAppointment.patient_id,
-      }));
-    },
+    queryFn: () =>
+      selectedAppointment?.patient_id
+        ? patientsApi.treatmentRecords(selectedAppointment.patient_id, true)
+        : Promise.resolve([] as TreatmentRecord[]),
     enabled: !!selectedAppointment?.patient_id,
   });
 
-  // Query to get treatment plans for a patient
+  // Pending treatment plans for the patient
   const { data: treatmentPlans } = useQuery({
     queryKey: ["treatment-plans", selectedAppointment?.patient_id],
-    queryFn: async () => {
-      if (!selectedAppointment?.patient_id) return [];
-      const { data, error } = await supabase
-        .from("treatment_plans")
-        .select(`
-          *,
-          treatments (name),
-          sub_treatments (name)
-        `)
-        .eq("patient_id", selectedAppointment.patient_id)
-        .eq("is_executed", false)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () =>
+      selectedAppointment?.patient_id
+        ? patientsApi.plans(selectedAppointment.patient_id, true)
+        : Promise.resolve([] as TreatmentPlan[]),
     enabled: !!selectedAppointment?.patient_id,
   });
 
-  // Query to get steps for selected treatment plan
-  const { data: planTreatmentSteps } = useQuery({
-    queryKey: ["plan-treatment-steps", selectedTreatmentPlan?.sub_treatment_id],
-    queryFn: async () => {
-      if (!selectedTreatmentPlan?.sub_treatment_id) return [];
-      const { data, error } = await supabase
-        .from("sub_treatment_steps")
-        .select("*")
-        .eq("sub_treatment_id", selectedTreatmentPlan.sub_treatment_id)
-        .order("step_order");
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!selectedTreatmentPlan?.sub_treatment_id,
-  });
-
-  // Query to get sub_treatment details for the selected plan
-  const { data: planSubTreatmentDetails } = useQuery({
-    queryKey: ["plan-sub-treatment-details", selectedTreatmentPlan?.sub_treatment_id],
-    queryFn: async () => {
-      if (!selectedTreatmentPlan?.sub_treatment_id) return null;
-      const { data, error } = await supabase
-        .from("sub_treatments")
-        .select("*")
-        .eq("id", selectedTreatmentPlan.sub_treatment_id)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!selectedTreatmentPlan?.sub_treatment_id,
-  });
+  // Steps for the selected treatment plan
+  const planTreatmentSteps = sortSteps(findSubTreatment(selectedTreatmentPlan?.sub_treatment_id)?.steps);
 
   // Auto-fill actual_cost when treatment plan is selected
   useEffect(() => {
-    if (selectedTreatmentPlan && planSubTreatmentDetails) {
+    if (selectedTreatmentPlan) {
+      const sub = selectedTreatmentPlan.sub_treatment;
       setPlanExecution(prev => ({
         ...prev,
-        actual_cost_syp: planSubTreatmentDetails.estimated_cost_syp?.toString().replace(/,/g, '') || "",
-        actual_cost_usd: planSubTreatmentDetails.estimated_cost_usd?.toString().replace(/,/g, '') || ""
+        actual_cost_syp: sub?.estimated_cost_syp?.toString().replace(/,/g, '') || "",
+        actual_cost_usd: sub?.estimated_cost_usd?.toString().replace(/,/g, '') || ""
       }));
     }
-  }, [selectedTreatmentPlan, planSubTreatmentDetails]);
+  }, [selectedTreatmentPlan]);
 
-  // Query to get steps for the selected treatment record
-  const { data: resumeTreatmentSteps } = useQuery({
-    queryKey: ["resume-treatment-steps", selectedTreatmentRecord?.sub_treatment_id],
-    queryFn: async () => {
-      if (!selectedTreatmentRecord?.sub_treatment_id) return [];
-      const { data, error } = await supabase
-        .from("sub_treatment_steps")
-        .select("*")
-        .eq("sub_treatment_id", selectedTreatmentRecord.sub_treatment_id)
-        .order("step_order");
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!selectedTreatmentRecord?.sub_treatment_id,
-  });
+  // Steps for the selected treatment record
+  const resumeTreatmentSteps = sortSteps(findSubTreatment(selectedTreatmentRecord?.sub_treatment_id)?.steps);
 
-  // Query to get completed steps for the selected treatment (across ALL related appointments)
-  // NOTE: include selectedAppointment.id in the key so switching appointments for the same patient refetches.
+  // Steps already done for the selected treatment (across ALL its sessions)
   const { data: resumeCompletedSteps } = useQuery({
-    queryKey: [
-      "resume-completed-steps",
-      selectedAppointment?.id,
-      selectedAppointment?.patient_id,
-      selectedTreatmentRecord?.treatment_id,
-      selectedTreatmentRecord?.sub_treatment_id,
-      selectedTreatmentRecord?.tooth_number,
-    ],
-    queryFn: async () => {
-      if (!selectedAppointment?.patient_id || !selectedAppointment?.id || !selectedTreatmentRecord?.treatment_id || !selectedTreatmentRecord?.sub_treatment_id) return [];
-
-      // 1) Find all appointments where this same treatment/sub-treatment/tooth was performed for this patient
-      const { data: relatedRecords, error: relatedError } = await supabase
-        .from("treatment_records")
-        .select(`appointment_id, appointments!inner (patient_id)`)
-        .eq("appointments.patient_id", selectedAppointment.patient_id)
-        .eq("treatment_id", selectedTreatmentRecord.treatment_id)
-        .eq("sub_treatment_id", selectedTreatmentRecord.sub_treatment_id)
-        .eq("tooth_number", selectedTreatmentRecord.tooth_number);
-
-      if (relatedError) throw relatedError;
-
-      const appointmentIds = Array.from(
-        new Set([
-          ...(relatedRecords || []).map((r: any) => r.appointment_id).filter(Boolean),
-          selectedAppointment.id,
-        ])
-      );
-
-      if (appointmentIds.length === 0) return [];
-
-      // 2) Fetch completed steps for those appointments, filtered to this sub_treatment via join
-      const { data, error } = await supabase
-        .from("appointment_treatment_steps")
-        .select(`*, sub_treatment_steps!inner (sub_treatment_id)`)
-        .in("appointment_id", appointmentIds)
-        .eq("sub_treatment_steps.sub_treatment_id", selectedTreatmentRecord.sub_treatment_id);
-
-      if (error) throw error;
-      return data || [];
-    },
-    enabled:
-      !!selectedAppointment?.patient_id &&
-      !!selectedAppointment?.id &&
-      !!selectedTreatmentRecord?.treatment_id &&
-      !!selectedTreatmentRecord?.sub_treatment_id,
+    queryKey: ["resume-completed-steps", selectedAppointment?.id, selectedTreatmentRecord?.id],
+    queryFn: () =>
+      selectedAppointment?.id && selectedTreatmentRecord?.id
+        ? appointmentsApi.completedSteps(selectedAppointment.id, selectedTreatmentRecord.id)
+        : Promise.resolve([] as string[]),
+    enabled: !!selectedAppointment?.id && !!selectedTreatmentRecord?.id,
   });
+
+  const appointmentPayload = (appointment: typeof newAppointment) => {
+    const doctor = doctors?.find((d) => d.id === appointment.doctor_id);
+    const many = (doctor?.specialties?.length ?? 0) > 1;
+    return {
+      patient_id: appointment.patient_id,
+      doctor_id: appointment.doctor_id,
+      // null lets the server use the doctor's primary specialty
+      specialty_id: many ? (appointment.specialty_id || doctor?.primary_specialty_id || null) : null,
+      // Convert local datetime to ISO string for proper timezone handling
+      scheduled_at: new Date(appointment.scheduled_at).toISOString(),
+      notes: appointment.notes || null,
+    };
+  };
+
+  const resetAppointmentForm = () => {
+    setNewAppointment(emptyAppointmentForm);
+    setSelectedPatientLabel("");
+  };
 
   const createAppointmentMutation = useMutation({
-    mutationFn: async (appointment: typeof newAppointment) => {
-      // Convert local datetime to ISO string for proper timezone handling
-      const scheduledDate = new Date(appointment.scheduled_at);
-      const appointmentData = {
-        ...appointment,
-        scheduled_at: scheduledDate.toISOString()
-      };
-      const { data, error } = await supabase.from("appointments").insert([appointmentData]).select();
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (appointment: typeof newAppointment) => appointmentsApi.create(appointmentPayload(appointment)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["patient-future-appointments"] });
       setIsDialogOpen(false);
-      setNewAppointment({ patient_id: "", doctor_id: "", scheduled_at: "", notes: "" });
+      resetAppointmentForm();
       toast({ title: "Success", description: "Appointment created successfully" });
+    },
+    onError: (e) => {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
     },
   });
 
   const updateAppointmentMutation = useMutation({
-    mutationFn: async (appointment: typeof newAppointment & { id: string }) => {
-      // Convert local datetime to ISO string for proper timezone handling
-      const scheduledDate = new Date(appointment.scheduled_at);
-      const { data, error } = await supabase
-        .from("appointments")
-        .update({
-          patient_id: appointment.patient_id,
-          doctor_id: appointment.doctor_id,
-          scheduled_at: scheduledDate.toISOString(),
-          notes: appointment.notes,
-        })
-        .eq("id", appointment.id)
-        .select();
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (appointment: typeof newAppointment & { id: string }) =>
+      appointmentsApi.update(appointment.id, appointmentPayload(appointment)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["patient-future-appointments"] });
       setIsDialogOpen(false);
       setEditingAppointment(null);
-      setNewAppointment({ patient_id: "", doctor_id: "", scheduled_at: "", notes: "" });
+      resetAppointmentForm();
       toast({ title: "نجح", description: "تم تحديث الموعد بنجاح" });
+    },
+    onError: (e) => {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
     },
   });
 
   const deleteAppointmentMutation = useMutation({
-    mutationFn: async (appointmentId: string) => {
-      const { error } = await supabase.from("appointments").delete().eq("id", appointmentId);
-      if (error) throw error;
-    },
+    // The server also deletes the appointment's payments, records, steps, plans links...
+    mutationFn: (appointmentId: string) => appointmentsApi.remove(appointmentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       toast({ title: "نجح", description: "تم حذف الموعد بنجاح" });
+    },
+    onError: (e) => {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
     },
   });
 
@@ -575,97 +407,39 @@ export default function Appointments() {
       return;
     }
 
-    const startOfDay = new Date(bulkDeleteStartDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(bulkDeleteEndDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    try {
+      const preview = await appointmentsApi.bulkDeletePreview(dayStartIso(bulkDeleteStartDate), dayEndIso(bulkDeleteEndDate));
 
-    // Fetch appointments in date range
-    const { data: appointmentsToDelete, error: aptError } = await supabase
-      .from("appointments")
-      .select(`
-        *,
-        patients (full_name, phone_number),
-        doctors (full_name, specialty)
-      `)
-      .gte("scheduled_at", startOfDay.toISOString())
-      .lte("scheduled_at", endOfDay.toISOString());
+      if (!preview.appointments || preview.appointments.length === 0) {
+        toast({ title: "لا توجد مواعيد", description: "لا توجد مواعيد في هذا النطاق الزمني", variant: "destructive" });
+        return;
+      }
 
-    if (aptError) {
-      toast({ title: "خطأ", description: "فشل في جلب المواعيد", variant: "destructive" });
-      return;
+      setBulkDeletePreview(preview);
+      setIsBulkDeleteConfirmOpen(true);
+    } catch (e) {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
     }
-
-    if (!appointmentsToDelete || appointmentsToDelete.length === 0) {
-      toast({ title: "لا توجد مواعيد", description: "لا توجد مواعيد في هذا النطاق الزمني", variant: "destructive" });
-      return;
-    }
-
-    const appointmentIds = appointmentsToDelete.map(a => a.id);
-
-    // Fetch payments for these appointments
-    const { data: paymentsToDelete, error: payError } = await supabase
-      .from("payments")
-      .select(`
-        *,
-        appointments!inner (
-          scheduled_at,
-          patients (full_name)
-        )
-      `)
-      .in("appointment_id", appointmentIds);
-
-    if (payError) {
-      toast({ title: "خطأ", description: "فشل في جلب الدفعات", variant: "destructive" });
-      return;
-    }
-
-    // Fetch treatment records for these appointments
-    const { data: treatmentsToDelete, error: treatError } = await supabase
-      .from("treatment_records")
-      .select(`
-        *,
-        treatments (name),
-        sub_treatments (name),
-        appointments!inner (
-          scheduled_at,
-          patients (full_name)
-        )
-      `)
-      .in("appointment_id", appointmentIds);
-
-    if (treatError) {
-      toast({ title: "خطأ", description: "فشل في جلب العلاجات", variant: "destructive" });
-      return;
-    }
-
-    setBulkDeletePreview({
-      appointments: appointmentsToDelete,
-      payments: paymentsToDelete || [],
-      treatments: treatmentsToDelete || [],
-    });
-
-    setIsBulkDeleteConfirmOpen(true);
   };
 
   // Function to export deleted data and perform bulk delete
   const executeBulkDelete = async () => {
     if (!bulkDeletePreview) return;
 
-    const { appointments: appointmentsToDelete, payments: paymentsToDelete, treatments: treatmentsToDelete } = bulkDeletePreview;
+    const { appointments: appointmentsToDelete, payments: paymentsToDelete, treatment_records: treatmentsToDelete } = bulkDeletePreview;
 
     // Create Excel workbook with deleted data
     const wb = XLSX.utils.book_new();
 
     // Appointments sheet
     if (appointmentsToDelete.length > 0) {
-      const appointmentsData = appointmentsToDelete.map((apt: any) => ({
+      const appointmentsData = appointmentsToDelete.map((apt) => ({
         'التاريخ': format(new Date(apt.scheduled_at), 'dd/MM/yyyy'),
         'الوقت': new Date(apt.scheduled_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' }),
-        'اسم المريض': apt.patients?.full_name || '-',
-        'رقم الهاتف': apt.patients?.phone_number || '-',
-        'الطبيب': apt.doctors?.full_name || '-',
-        'التخصص': apt.doctors?.specialty || '-',
+        'اسم المريض': apt.patient?.full_name || '-',
+        'رقم الهاتف': apt.patient?.phone_number || '-',
+        'الطبيب': apt.doctor?.full_name || '-',
+        'التخصص': specialtyName(apt) || '-',
         'الحالة': apt.status === 'Completed' ? 'مكتمل' : apt.status === 'Scheduled' ? 'مجدول' : 'ملغي',
         'ملاحظات': apt.notes || '-',
       }));
@@ -675,11 +449,12 @@ export default function Appointments() {
 
     // Payments sheet
     if (paymentsToDelete.length > 0) {
-      const paymentsData = paymentsToDelete.map((pay: any) => ({
+      const paymentsData = paymentsToDelete.map((pay) => ({
         'تاريخ الدفع': format(new Date(pay.paid_at), 'dd/MM/yyyy'),
         'المبلغ': pay.amount,
-        'اسم المريض': pay.appointments?.patients?.full_name || '-',
-        'تاريخ الموعد': format(new Date(pay.appointments?.scheduled_at), 'dd/MM/yyyy'),
+        'العملة': pay.currency === 'USD' ? '$' : 'ل.س',
+        'اسم المريض': pay.appointment?.patient?.full_name || '-',
+        'تاريخ الموعد': pay.appointment?.scheduled_at ? format(new Date(pay.appointment.scheduled_at), 'dd/MM/yyyy') : '-',
       }));
       const ws2 = XLSX.utils.json_to_sheet(paymentsData);
       XLSX.utils.book_append_sheet(wb, ws2, 'الدفعات المحذوفة');
@@ -687,13 +462,14 @@ export default function Appointments() {
 
     // Treatment records sheet
     if (treatmentsToDelete.length > 0) {
-      const treatmentsData = treatmentsToDelete.map((tr: any) => ({
+      const treatmentsData = treatmentsToDelete.map((tr) => ({
         'تاريخ العلاج': format(new Date(tr.performed_at), 'dd/MM/yyyy'),
-        'اسم المريض': tr.appointments?.patients?.full_name || '-',
-        'العلاج': tr.treatments?.name || '-',
-        'العلاج الفرعي': tr.sub_treatments?.name || '-',
+        'اسم المريض': tr.appointment?.patient?.full_name || '-',
+        'العلاج': tr.treatment?.name || '-',
+        'العلاج الفرعي': tr.sub_treatment?.name || '-',
         'رقم السن': tr.tooth_number || '-',
-        'التكلفة': tr.actual_cost || '-',
+        'التكلفة (ل.س)': tr.actual_cost_syp ?? '-',
+        'التكلفة ($)': tr.actual_cost_usd ?? '-',
         'ملاحظات العلاج': tr.treatment_notes || '-',
         'الحالة': tr.is_completed ? 'مكتمل' : 'جاري',
       }));
@@ -707,53 +483,13 @@ export default function Appointments() {
     const fileName = `البيانات_المحذوفة_${format(new Date(bulkDeleteStartDate), 'dd-MM-yyyy')}_إلى_${format(new Date(bulkDeleteEndDate), 'dd-MM-yyyy')}.xlsx`;
     saveAs(blob, fileName);
 
-    // Now delete the data - order matters due to foreign keys
-    const appointmentIds = appointmentsToDelete.map((a: any) => a.id);
-
-    // Delete appointment_treatment_steps
-    await supabase
-      .from("appointment_treatment_steps")
-      .delete()
-      .in("appointment_id", appointmentIds);
-
-    // Delete treatment_records
-    await supabase
-      .from("treatment_records")
-      .delete()
-      .in("appointment_id", appointmentIds);
-
-    // Delete payments
-    await supabase
-      .from("payments")
-      .delete()
-      .in("appointment_id", appointmentIds);
-
-    // Delete treatment_plans linked to these appointments
-    await supabase
-      .from("treatment_plans")
-      .delete()
-      .in("appointment_id", appointmentIds);
-
-    // Delete unfinished_sub_treatments linked to these appointments
-    await supabase
-      .from("unfinished_sub_treatments")
-      .delete()
-      .in("last_appointment_id", appointmentIds);
-
-    // Delete waiting_list entries
-    await supabase
-      .from("waiting_list")
-      .delete()
-      .in("appointment_id", appointmentIds);
-
-    // Finally delete appointments
-    const { error } = await supabase
-      .from("appointments")
-      .delete()
-      .in("id", appointmentIds);
-
-    if (error) {
-      toast({ title: "خطأ", description: "فشل في حذف المواعيد", variant: "destructive" });
+    // The server deletes the appointments and everything linked to them
+    let deleted = appointmentsToDelete.length;
+    try {
+      const res = await appointmentsApi.bulkDelete(dayStartIso(bulkDeleteStartDate), dayEndIso(bulkDeleteEndDate));
+      deleted = res.deleted;
+    } catch (e) {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
       return;
     }
 
@@ -767,25 +503,14 @@ export default function Appointments() {
 
     toast({
       title: "تم الحذف بنجاح",
-      description: `تم حذف ${appointmentsToDelete.length} موعد و ${paymentsToDelete.length} دفعة و ${treatmentsToDelete.length} سجل علاج وتصدير البيانات`
+      description: `تم حذف ${deleted} موعد و ${paymentsToDelete.length} دفعة و ${treatmentsToDelete.length} سجل علاج وتصدير البيانات`
     });
   };
 
   // Mutation to add payment
   const addPaymentMutation = useMutation({
-    mutationFn: async ({ appointmentId, amount, currency }: { appointmentId: string; amount: number; currency: string }) => {
-      const { data, error } = await supabase
-        .from("payments")
-        .insert([{
-          appointment_id: appointmentId,
-          amount: amount,
-          currency: currency,
-          paid_at: new Date().toISOString()
-        }])
-        .select();
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: ({ appointmentId, amount, currency }: { appointmentId: string; amount: number; currency: string }) =>
+      moneyApi.addPayment({ appointment_id: appointmentId, amount, currency: currency as Currency }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       setIsAddPaymentDialogOpen(false);
@@ -793,8 +518,8 @@ export default function Appointments() {
       setNewPaymentCurrency("SYP");
       toast({ title: "نجح", description: "تم تسجيل الدفعة بنجاح" });
     },
-    onError: () => {
-      toast({ title: "خطأ", description: "فشل في تسجيل الدفعة", variant: "destructive" });
+    onError: (e) => {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
     },
   });
 
@@ -809,83 +534,22 @@ export default function Appointments() {
     addPaymentMutation.mutate({ appointmentId: selectedAppointment.id, amount, currency: newPaymentCurrency });
   };
 
+  // F1: one call — the server decides completion, unfinished tracking and payment
   const recordTreatmentMutation = useMutation({
-    mutationFn: async (record: typeof treatmentRecord) => {
-      // Check if all steps are completed
-      const allSteps = treatmentSteps || [];
-      const isCompleted = allSteps.length === 0 || (selectedSteps.length === allSteps.length);
-
-      // Insert treatment record
-      const { data, error } = await supabase
-        .from("treatment_records")
-        .insert([{
-          treatment_id: record.treatment_id,
-          sub_treatment_id: record.sub_treatment_id,
-          tooth_number: record.tooth_numbers.join(", "),
-          appointment_id: selectedAppointment.id,
-          actual_cost_syp: record.actual_cost_syp ? parseFloat(record.actual_cost_syp) : 0,
-          actual_cost_usd: record.actual_cost_usd ? parseFloat(record.actual_cost_usd) : 0,
-          performed_at: new Date().toISOString(),
-          is_completed: isCompleted,
-          treatment_notes: record.treatment_notes || null
-        }])
-        .select();
-      if (error) throw error;
-
-      // Update appointment notes
-      if (record.notes.trim()) {
-        const { error: notesError } = await supabase
-          .from("appointments")
-          .update({ notes: record.notes })
-          .eq("id", selectedAppointment.id);
-        if (notesError) throw notesError;
-      }
-
-      // Save completed treatment steps if any are selected
-      if (selectedSteps.length > 0) {
-        const stepData = selectedSteps.map(stepId => ({
-          appointment_id: selectedAppointment.id,
-          sub_treatment_step_id: stepId,
-          is_completed: true,
-          completed_at: new Date().toISOString()
-        }));
-
-        const { error: stepsError } = await supabase
-          .from("appointment_treatment_steps")
-          .insert(stepData);
-        if (stepsError) throw stepsError;
-      }
-
-      // Add payment if payment_amount is provided
-      if (record.payment_amount && parseFloat(record.payment_amount) > 0) {
-        const { error: paymentError } = await supabase
-          .from("payments")
-          .insert({
-            appointment_id: selectedAppointment.id,
-            amount: parseFloat(record.payment_amount),
-            currency: record.payment_currency,
-            paid_at: new Date().toISOString()
-          });
-        if (paymentError) throw paymentError;
-      }
-
-      // If treatment is not completed, add to unfinished_sub_treatments
-      if (!isCompleted) {
-        const { error: unfinishedError } = await supabase
-          .from("unfinished_sub_treatments")
-          .insert({
-            patient_id: selectedAppointment.patient_id,
-            treatment_id: record.treatment_id,
-            sub_treatment_id: record.sub_treatment_id,
-            tooth_number: record.tooth_numbers.join(", "),
-            last_appointment_id: selectedAppointment.id,
-            notes: record.notes || null,
-            started_at: new Date().toISOString()
-          });
-        if (unfinishedError) throw unfinishedError;
-      }
-
-      return data;
+    mutationFn: (record: typeof treatmentRecord) => {
+      if (!selectedAppointment) throw new Error("لم يتم اختيار موعد");
+      return appointmentsApi.recordTreatment(selectedAppointment.id, {
+        treatment_id: record.treatment_id,
+        sub_treatment_id: record.sub_treatment_id,
+        tooth_numbers: isToothSelectionEnabled ? record.tooth_numbers : [],
+        actual_cost_syp: toNumberOrNull(record.actual_cost_syp),
+        actual_cost_usd: toNumberOrNull(record.actual_cost_usd),
+        payment_amount: toNumberOrNull(record.payment_amount),
+        payment_currency: record.payment_currency as Currency,
+        notes: record.notes || null,
+        treatment_notes: record.treatment_notes || null,
+        step_ids: selectedSteps,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
@@ -897,165 +561,24 @@ export default function Appointments() {
       setSelectedSteps([]);
       toast({ title: "نجح", description: "تم تسجيل العلاج والدفعة بنجاح" });
     },
-  });
-
-  // Mutation to save treatment steps
-  const saveStepsMutation = useMutation({
-    mutationFn: async (steps: string[]) => {
-      if (!selectedAppointment?.id) throw new Error("No appointment selected");
-
-      // Delete existing steps for this appointment
-      await supabase
-        .from("appointment_treatment_steps")
-        .delete()
-        .eq("appointment_id", selectedAppointment.id);
-
-      // Insert new steps
-      if (steps.length > 0) {
-        const stepData = steps.map(stepId => ({
-          appointment_id: selectedAppointment.id,
-          sub_treatment_step_id: stepId,
-          is_completed: true,
-          completed_at: new Date().toISOString()
-        }));
-
-        const { error } = await supabase
-          .from("appointment_treatment_steps")
-          .insert(stepData);
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["completed-steps"] });
-      setIsStepsDialogOpen(false);
-      setSelectedSteps([]);
-      toast({ title: "نجح", description: "تم حفظ خطوات العلاج بنجاح" });
+    onError: (e) => {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
     },
   });
 
-  // Mutation to resume treatment steps
+  // F2: resume an unfinished treatment — one call
   const resumeStepsMutation = useMutation({
-    mutationFn: async (steps: string[]) => {
-      if (!selectedTreatmentRecord?.appointment_id) throw new Error("No treatment record selected");
-
-      // Insert new completed steps for the current appointment
-      if (steps.length > 0) {
-        const stepData = steps.map(stepId => ({
-          appointment_id: selectedAppointment.id,
-          sub_treatment_step_id: stepId,
-          is_completed: true,
-          completed_at: new Date().toISOString()
-        }));
-
-        const { error } = await supabase
-          .from("appointment_treatment_steps")
-          .insert(stepData);
-        if (error) throw error;
-      }
-
-      // Check if all steps are completed
-      const allSteps = resumeTreatmentSteps || [];
-      const previouslyCompletedIds = (resumeCompletedSteps || [])
-        .map(cs => (cs as any).sub_treatment_step_id)
-        .filter(Boolean);
-      const currentStepIds = steps || [];
-      const allCompletedStepIds = [...previouslyCompletedIds, ...currentStepIds];
-      const allStepsCompleted = allSteps.length > 0 && allSteps.every(step => allCompletedStepIds.includes(step.id));
-
-      // Update treatment_notes if provided - append to existing notes
-      if (resumeTreatmentNotes.trim()) {
-        const existingNotes = selectedTreatmentRecord.treatment_notes || "";
-        const updatedNotes = existingNotes
-          ? `${existingNotes}\n\n--- ${format(new Date(), 'dd/MM/yyyy')} ---\n${resumeTreatmentNotes}`
-          : resumeTreatmentNotes;
-
-        await supabase
-          .from("treatment_records")
-          .update({
-            treatment_notes: updatedNotes,
-            is_completed: allStepsCompleted,
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", selectedTreatmentRecord.id);
-      } else if (allStepsCompleted) {
-        // Mark original treatment as completed even if no new notes
-        await supabase
-          .from("treatment_records")
-          .update({
-            is_completed: true,
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", selectedTreatmentRecord.id);
-      }
-
-      // Check if a treatment record already exists for this appointment, treatment, sub_treatment, and tooth
-      const { data: existingRecord } = await supabase
-        .from("treatment_records")
-        .select("id, treatment_notes")
-        .eq("appointment_id", selectedAppointment.id)
-        .eq("treatment_id", selectedTreatmentRecord.treatment_id)
-        .eq("sub_treatment_id", selectedTreatmentRecord.sub_treatment_id)
-        .eq("tooth_number", selectedTreatmentRecord.tooth_number)
-        .maybeSingle();
-
-      if (existingRecord) {
-        // Update existing record instead of creating a new one
-        const existingRecordNotes = existingRecord.treatment_notes || "";
-        const updatedRecordNotes = resumeTreatmentNotes
-          ? (existingRecordNotes
-              ? `${existingRecordNotes}\n${resumeTreatmentNotes}`
-              : resumeTreatmentNotes)
-          : existingRecordNotes;
-
-        await supabase
-          .from("treatment_records")
-          .update({
-            is_completed: allStepsCompleted,
-            treatment_notes: updatedRecordNotes,
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", existingRecord.id);
-      } else {
-        // Create a new treatment record for the current appointment only if one doesn't exist
-        await supabase
-          .from("treatment_records")
-          .insert({
-            appointment_id: selectedAppointment.id,
-            treatment_id: selectedTreatmentRecord.treatment_id,
-            sub_treatment_id: selectedTreatmentRecord.sub_treatment_id,
-            tooth_number: selectedTreatmentRecord.tooth_number,
-            actual_cost_syp: 0, // No additional cost for continuation session
-            actual_cost_usd: 0,
-            is_completed: allStepsCompleted,
-            treatment_notes: resumeTreatmentNotes || `استكمال العلاج - ${format(new Date(), 'dd/MM/yyyy')}`,
-            performed_at: new Date().toISOString(),
-          });
-      }
-
-      if (allStepsCompleted) {
-        // Remove from unfinished_sub_treatments
-        await supabase
-          .from("unfinished_sub_treatments")
-          .delete()
-          .eq("patient_id", selectedAppointment.patient_id)
-          .eq("treatment_id", selectedTreatmentRecord.treatment_id)
-          .eq("sub_treatment_id", selectedTreatmentRecord.sub_treatment_id)
-          .eq("tooth_number", selectedTreatmentRecord.tooth_number);
-      } else {
-        // Update last_appointment_id in unfinished_sub_treatments
-        await supabase
-          .from("unfinished_sub_treatments")
-          .update({
-            last_appointment_id: selectedAppointment.id,
-            updated_at: new Date().toISOString()
-          })
-          .eq("patient_id", selectedAppointment.patient_id)
-          .eq("treatment_id", selectedTreatmentRecord.treatment_id)
-          .eq("sub_treatment_id", selectedTreatmentRecord.sub_treatment_id)
-          .eq("tooth_number", selectedTreatmentRecord.tooth_number);
-      }
+    mutationFn: (steps: string[]) => {
+      if (!selectedAppointment || !selectedTreatmentRecord) throw new Error("No treatment record selected");
+      return appointmentsApi.resume(selectedAppointment.id, {
+        treatment_record_id: selectedTreatmentRecord.id,
+        step_ids: steps,
+        notes: resumeTreatmentNotes.trim() || null,
+      });
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["completed-steps"] });
       queryClient.invalidateQueries({ queryKey: ["unfinished-treatments"] });
       queryClient.invalidateQueries({ queryKey: ["resume-completed-steps"] });
       setIsResumeDialogOpen(false);
@@ -1064,127 +587,29 @@ export default function Appointments() {
       setResumeTreatmentNotes("");
       toast({ title: "نجح", description: "تم استكمال خطوات العلاج بنجاح" });
     },
+    onError: (e) => {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
+    },
   });
 
-  // Mutation to execute treatment plan
+  // F3: execute a treatment plan — one call
   const executePlanMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedTreatmentPlan) throw new Error("No treatment plan selected");
-
-      // Check if all steps are completed
-      const allSteps = planTreatmentSteps || [];
-      const isCompleted = allSteps.length === 0 || (selectedSteps.length === allSteps.length);
-
-      // Get existing treatment notes for this treatment if any
-      let existingNotes = "";
-      if (planExecution.treatment_notes.trim()) {
-        const { data: existingRecords } = await supabase
-          .from("treatment_records")
-          .select("treatment_notes")
-          .eq("treatment_id", selectedTreatmentPlan.treatment_id)
-          .eq("sub_treatment_id", selectedTreatmentPlan.sub_treatment_id)
-          .eq("tooth_number", selectedTreatmentPlan.tooth_number)
-          .order("performed_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (existingRecords?.treatment_notes) {
-          existingNotes = existingRecords.treatment_notes;
-        }
-      }
-
-      // Append new notes to existing notes
-      const updatedNotes = planExecution.treatment_notes.trim()
-        ? existingNotes
-          ? `${existingNotes}\n\n--- ${format(new Date(), 'dd/MM/yyyy')} ---\n${planExecution.treatment_notes}`
-          : planExecution.treatment_notes
-        : null;
-
-      // Create treatment record
-      const { data: recordData, error: recordError } = await supabase
-        .from("treatment_records")
-        .insert([{
-          treatment_id: selectedTreatmentPlan.treatment_id,
-          sub_treatment_id: selectedTreatmentPlan.sub_treatment_id,
-          tooth_number: selectedTreatmentPlan.tooth_number,
-          appointment_id: selectedAppointment.id,
-          actual_cost_syp: planExecution.actual_cost_syp ? parseFloat(planExecution.actual_cost_syp) : 0,
-          actual_cost_usd: planExecution.actual_cost_usd ? parseFloat(planExecution.actual_cost_usd) : 0,
-          performed_at: new Date().toISOString(),
-          is_completed: isCompleted,
-          treatment_notes: updatedNotes
-        }])
-        .select();
-      if (recordError) throw recordError;
-
-      // Update appointment notes if provided
-      if (planExecution.notes.trim()) {
-        const { error: notesError } = await supabase
-          .from("appointments")
-          .update({ notes: planExecution.notes })
-          .eq("id", selectedAppointment.id);
-        if (notesError) throw notesError;
-      }
-
-      // Save completed treatment steps if any are selected
-      if (selectedSteps.length > 0) {
-        const stepData = selectedSteps.map(stepId => ({
-          appointment_id: selectedAppointment.id,
-          sub_treatment_step_id: stepId,
-          is_completed: true,
-          completed_at: new Date().toISOString()
-        }));
-
-        const { error: stepsError } = await supabase
-          .from("appointment_treatment_steps")
-          .insert(stepData);
-        if (stepsError) throw stepsError;
-      }
-
-      // Add payment if payment_amount is provided
-      if (planExecution.payment_amount && parseFloat(planExecution.payment_amount) > 0) {
-        const { error: paymentError } = await supabase
-          .from("payments")
-          .insert({
-            appointment_id: selectedAppointment.id,
-            amount: parseFloat(planExecution.payment_amount),
-            currency: planExecution.payment_currency,
-            paid_at: new Date().toISOString()
-          });
-        if (paymentError) throw paymentError;
-      }
-
-      // If treatment is not completed, add to unfinished_sub_treatments
-      if (!isCompleted) {
-        const { error: unfinishedError } = await supabase
-          .from("unfinished_sub_treatments")
-          .insert({
-            patient_id: selectedAppointment.patient_id,
-            treatment_id: selectedTreatmentPlan.treatment_id,
-            sub_treatment_id: selectedTreatmentPlan.sub_treatment_id,
-            tooth_number: selectedTreatmentPlan.tooth_number,
-            last_appointment_id: selectedAppointment.id,
-            notes: planExecution.notes || null,
-            started_at: new Date().toISOString()
-          });
-        if (unfinishedError) throw unfinishedError;
-      }
-
-      // Mark treatment plan as executed
-      const { error: planError } = await supabase
-        .from("treatment_plans")
-        .update({
-          is_executed: true,
-          executed_at: new Date().toISOString(),
-          appointment_id: selectedAppointment.id
-        })
-        .eq("id", selectedTreatmentPlan.id);
-      if (planError) throw planError;
-
-      return recordData;
+    mutationFn: () => {
+      if (!selectedTreatmentPlan || !selectedAppointment) throw new Error("No treatment plan selected");
+      return appointmentsApi.executePlan(selectedAppointment.id, {
+        treatment_plan_id: selectedTreatmentPlan.id,
+        actual_cost_syp: toNumberOrNull(planExecution.actual_cost_syp),
+        actual_cost_usd: toNumberOrNull(planExecution.actual_cost_usd),
+        payment_amount: toNumberOrNull(planExecution.payment_amount),
+        payment_currency: planExecution.payment_currency as Currency,
+        notes: planExecution.notes || null,
+        treatment_notes: planExecution.treatment_notes || null,
+        step_ids: selectedSteps,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["completed-steps"] });
       queryClient.invalidateQueries({ queryKey: ["treatment-plans"] });
       queryClient.invalidateQueries({ queryKey: ["unfinished-treatments"] });
       setIsExecutePlanDetailsDialogOpen(false);
@@ -1194,19 +619,30 @@ export default function Appointments() {
       setSelectedSteps([]);
       toast({ title: "نجح", description: "تم تنفيذ خطة العلاج بنجاح" });
     },
+    onError: (e) => {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
+    },
   });
 
-  const updateAppointmentStatus = async (appointmentId: string, status: "Scheduled" | "Completed" | "Cancelled") => {
-    const { error } = await supabase
-      .from("appointments")
-      .update({ status })
-      .eq("id", appointmentId);
+  const deletePlan = async (planId: string) => {
+    try {
+      await moneyApi.removePlan(planId);
+      queryClient.invalidateQueries({ queryKey: ["treatment-plans"] });
+      setIsExecutePlanDetailsDialogOpen(false);
+      setSelectedTreatmentPlan(null);
+      toast({ title: "نجح", description: "تم حذف الخطة بنجاح" });
+    } catch (e) {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
+    }
+  };
 
-    if (error) {
-      toast({ title: "Error", description: "Failed to update appointment", variant: "destructive" });
-    } else {
+  const updateAppointmentStatus = async (appointmentId: string, status: AppointmentStatus) => {
+    try {
+      await appointmentsApi.update(appointmentId, { status });
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       toast({ title: "Success", description: "Appointment updated successfully" });
+    } catch (e) {
+      toast({ title: "Error", description: apiErrorMessage(e), variant: "destructive" });
     }
   };
 
@@ -1219,8 +655,31 @@ export default function Appointments() {
     }
   };
 
-  const handleExportToExcel = () => {
-    if (!appointments || appointments.length === 0) {
+  const openEditAppointment = (appointment: Appointment) => {
+    setEditingAppointment(appointment);
+    setSelectedPatientLabel(appointment.patient?.full_name || "");
+    setNewAppointment({
+      patient_id: appointment.patient_id,
+      doctor_id: appointment.doctor_id,
+      specialty_id: appointment.specialty_id || "",
+      scheduled_at: formatDateForInput(appointment.scheduled_at),
+      notes: appointment.notes || "",
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleExportToExcel = async () => {
+    // Export every appointment matching the filters, not just the visible page
+    let allAppointments: Appointment[] = [];
+    try {
+      const res = await appointmentsApi.list({ ...appointmentFilters, per_page: 5000 });
+      allAppointments = res.data;
+    } catch (e) {
+      toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" });
+      return;
+    }
+
+    if (allAppointments.length === 0) {
       toast({
         title: "لا توجد بيانات",
         description: "لا توجد مواعيد لتصديرها",
@@ -1239,9 +698,9 @@ export default function Appointments() {
     }
 
     // Group appointments by date
-    const appointmentsByDate: { [key: string]: any[] } = {};
+    const appointmentsByDate: { [key: string]: Appointment[] } = {};
 
-    appointments.forEach(apt => {
+    allAppointments.forEach(apt => {
       const date = format(new Date(apt.scheduled_at), 'dd/MM/yyyy');
       if (!appointmentsByDate[date]) {
         appointmentsByDate[date] = [];
@@ -1261,19 +720,19 @@ export default function Appointments() {
       const dayAppointments = appointmentsByDate[date];
 
       const exportData = dayAppointments.map(apt => {
-        const row: any = {};
+        const row: Record<string, string> = {};
 
         if (selectedColumns.includes('patient_name')) {
-          row['اسم المريض'] = apt.patients?.full_name || '';
+          row['اسم المريض'] = apt.patient?.full_name || '';
         }
         if (selectedColumns.includes('phone_number')) {
-          row['رقم الهاتف'] = apt.patients?.phone_number || '';
+          row['رقم الهاتف'] = apt.patient?.phone_number || '';
         }
         if (selectedColumns.includes('doctor_name')) {
-          row['الطبيب'] = apt.doctors?.full_name || '';
+          row['الطبيب'] = apt.doctor?.full_name || '';
         }
         if (selectedColumns.includes('specialty')) {
-          row['التخصص'] = apt.doctors?.specialty || '';
+          row['التخصص'] = specialtyName(apt);
         }
         if (selectedColumns.includes('date')) {
           row['التاريخ'] = format(new Date(apt.scheduled_at), 'dd/MM/yyyy');
@@ -1294,7 +753,7 @@ export default function Appointments() {
       const ws = XLSX.utils.json_to_sheet(exportData);
 
       // Create a safe sheet name (max 31 chars, no special chars)
-      const sheetName = date.substring(0, 31).replace(/[:\\/?*\[\]]/g, '-');
+      const sheetName = date.substring(0, 31).replace(/[:\\/?*[\]]/g, '-');
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
     });
 
@@ -1321,7 +780,7 @@ export default function Appointments() {
         const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet);
 
         if (jsonData.length === 0) {
           toast({
@@ -1332,63 +791,56 @@ export default function Appointments() {
           return;
         }
 
-        // Process and validate imported data
-        let successCount = 0;
-        let errorCount = 0;
+        // Build the rows; incomplete rows fail here, names are matched by the server
+        const rows: ImportRow[] = [];
+        const sheetRowNumbers: number[] = [];
+        let localFailed = 0;
 
-        for (const row of jsonData as any[]) {
-          try {
-            // Find patient by name
-            const patient = patients?.find(p => p.full_name === row['اسم المريض']);
-            if (!patient) {
-              errorCount++;
-              continue;
-            }
-
-            // Find doctor by name
-            const doctor = doctors?.find(d => d.full_name === row['الطبيب']);
-            if (!doctor) {
-              errorCount++;
-              continue;
-            }
-
-            // Parse date and time
-            const dateStr = row['التاريخ'];
-            const timeStr = row['الوقت'];
-            if (!dateStr || !timeStr) {
-              errorCount++;
-              continue;
-            }
-
-            // Create appointment
-            const { error } = await supabase.from("appointments").insert({
-              patient_id: patient.id,
-              doctor_id: doctor.id,
-              scheduled_at: new Date(`${dateStr} ${timeStr}`).toISOString(),
-              notes: row['ملاحظات'] || '',
-              status: row['الحالة'] || 'Scheduled'
-            });
-
-            if (error) {
-              errorCount++;
-            } else {
-              successCount++;
-            }
-          } catch (err) {
-            errorCount++;
+        jsonData.forEach((row, index) => {
+          const patientName = String(row['اسم المريض'] ?? '').trim();
+          const doctorName = String(row['الطبيب'] ?? '').trim();
+          const dateStr = row['التاريخ'];
+          const timeStr = row['الوقت'];
+          if (!patientName || !doctorName || !dateStr || !timeStr) {
+            localFailed++;
+            return;
           }
+          const scheduled = new Date(`${dateStr} ${timeStr}`);
+          if (isNaN(scheduled.getTime())) {
+            localFailed++;
+            return;
+          }
+          const status = String(row['الحالة'] ?? '') as AppointmentStatus;
+          rows.push({
+            patient_name: patientName,
+            doctor_name: doctorName,
+            scheduled_at: scheduled.toISOString(),
+            notes: row['ملاحظات'] ? String(row['ملاحظات']) : null,
+            status: APPOINTMENT_STATUSES.includes(status) ? status : 'Scheduled',
+          });
+          sheetRowNumbers.push(index + 2); // + header row, 1-based
+        });
+
+        let created = 0;
+        let failedReasons: string[] = [];
+        let serverFailed = 0;
+        if (rows.length > 0) {
+          const res = await appointmentsApi.import(rows);
+          created = res.created;
+          serverFailed = res.failed.length;
+          failedReasons = res.failed.slice(0, 5).map((f) => `صف ${sheetRowNumbers[f.row - 1] ?? f.row}: ${f.reason}`);
         }
 
         queryClient.invalidateQueries({ queryKey: ["appointments"] });
 
         toast({
           title: "اكتمل الاستيراد",
-          description: `تم استيراد ${successCount} موعد بنجاح. فشل: ${errorCount}`,
+          description: `تم استيراد ${created} موعد بنجاح. فشل: ${serverFailed + localFailed}${failedReasons.length ? `\n${failedReasons.join('\n')}` : ''}`,
         });
       } catch (error) {
         toast({
           title: "خطأ",
-          description: "فشل استيراد الملف",
+          description: apiErrorMessage(error) || "فشل استيراد الملف",
           variant: "destructive"
         });
       }
@@ -1443,8 +895,8 @@ export default function Appointments() {
   };
 
 
-  const sendWhatsAppMessage = (appointment: any) => {
-    if (!appointment.patients?.phone_number) {
+  const sendWhatsAppMessage = (appointment: Appointment) => {
+    if (!appointment.patient?.phone_number) {
       toast({
         title: "خطأ",
         description: "رقم هاتف المريض غير متوفر",
@@ -1460,13 +912,13 @@ export default function Appointments() {
       minute: '2-digit'
     });
 
-    const message = `مرحباً ${appointment.patients.full_name}،
+    const message = `مرحباً ${appointment.patient.full_name}،
 
 نذكركم بموعدكم في العيادة:
 📅 التاريخ: ${formattedDate}
 🕐 الوقت: ${formattedTime}
-👨‍⚕️ الطبيب: ${appointment.doctors?.full_name}
-🏥 التخصص: ${appointment.doctors?.specialty}
+👨‍⚕️ الطبيب: ${appointment.doctor?.full_name}
+🏥 التخصص: ${specialtyName(appointment)}
 
 ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
 
@@ -1474,7 +926,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
 
 شكراً لكم`;
 
-    const phoneNumber = appointment.patients.phone_number.replace(/[^0-9]/g, '');
+    const phoneNumber = appointment.patient.phone_number.replace(/[^0-9]/g, '');
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
 
     window.open(whatsappUrl, '_blank');
@@ -1514,7 +966,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
               setIsDialogOpen(open);
               if (!open) {
                 setEditingAppointment(null);
-                setNewAppointment({ patient_id: "", doctor_id: "", scheduled_at: "", notes: "" });
+                resetAppointmentForm();
                 setPatientSearchQuery("");
               }
             }}>
@@ -1540,7 +992,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                           className="w-full justify-between"
                         >
                           {newAppointment.patient_id
-                            ? (editingAppointment?.patients?.full_name ||
+                            ? (selectedPatientLabel ||
                               patients?.find((patient) => patient.id === newAppointment.patient_id)?.full_name)
                             : "ابحث عن مريض..."}
                           <ChevronsUpDown className="mr-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1563,6 +1015,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                                   value={patient.full_name}
                                   onSelect={() => {
                                     setNewAppointment({ ...newAppointment, patient_id: patient.id });
+                                    setSelectedPatientLabel(patient.full_name);
                                     setOpenPatientCombobox(false);
                                     setPatientSearchQuery("");
                                   }}
@@ -1598,7 +1051,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                                 {format(new Date(apt.scheduled_at), "HH:mm")}
                               </span>
                               <span className="text-amber-600 dark:text-amber-400">
-                                - {apt.doctors?.full_name}
+                                - {apt.doctor?.full_name}
                               </span>
                               <span className={cn(
                                 "px-1.5 py-0.5 rounded text-[10px]",
@@ -1616,12 +1069,19 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   </div>
                   <div>
                     <Label htmlFor="doctor_id">الطبيب</Label>
-                    <Select value={newAppointment.doctor_id} onValueChange={(value) => setNewAppointment({ ...newAppointment, doctor_id: value })}>
+                    <Select
+                      value={newAppointment.doctor_id}
+                      onValueChange={(value) => {
+                        const doctor = doctors?.find((d) => d.id === value);
+                        setNewAppointment({ ...newAppointment, doctor_id: value, specialty_id: doctor?.primary_specialty_id || "" });
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="اختر طبيب" />
                       </SelectTrigger>
                       <SelectContent>
-                        {doctors?.map((doctor) => (
+                        {/* Independent doctors can only book appointments for themselves */}
+                        {doctors?.filter((doctor) => !isIndependentDoctor || doctor.id === myDoctorId).map((doctor) => (
                           <SelectItem key={doctor.id} value={doctor.id}>
                             {doctor.full_name} - {doctor.specialty}
                           </SelectItem>
@@ -1629,6 +1089,26 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       </SelectContent>
                     </Select>
                   </div>
+                  {formDoctorHasManySpecialties && formDoctor && (
+                    <div>
+                      <Label htmlFor="specialty_id">التخصص</Label>
+                      <Select
+                        value={newAppointment.specialty_id || formDoctor.primary_specialty_id || ""}
+                        onValueChange={(value) => setNewAppointment({ ...newAppointment, specialty_id: value })}
+                      >
+                        <SelectTrigger id="specialty_id">
+                          <SelectValue placeholder="اختر التخصص" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {formDoctor.specialties.map((specialty) => (
+                            <SelectItem key={specialty.id} value={specialty.id}>
+                              {specialty.name_ar}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="scheduled_at">التاريخ والوقت</Label>
                     <Input
@@ -1829,21 +1309,24 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       }}
                     >
                       {visibleTableColumns.includes('date_time') && (
-                        <TableCell>
-                          {format(new Date(appointment.scheduled_at), 'dd/MM/yyyy')}
-                          {' - '}
-                          {new Date(appointment.scheduled_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                        <TableCell className="whitespace-nowrap">
+                          {/* Date over time: "date - time" on one line got reordered by bidi
+                              and mixed Latin with Arabic-Indic digits. */}
+                          <div className="tabular-nums">{format(new Date(appointment.scheduled_at), 'dd/MM/yyyy')}</div>
+                          <div className="text-xs text-muted-foreground tabular-nums">
+                            {new Date(appointment.scheduled_at).toLocaleTimeString('ar-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
                         </TableCell>
                       )}
                       {visibleTableColumns.includes('patient_name') && (
-                        <TableCell>{appointment.patients?.full_name}</TableCell>
+                        <TableCell>{appointment.patient?.full_name}</TableCell>
                       )}
                       {visibleTableColumns.includes('doctor_info') && (
-                        <TableCell className="hidden md:table-cell">
-                          {appointment.doctors?.full_name}
+                        <TableCell className="hidden md:table-cell whitespace-nowrap">
+                          {appointment.doctor?.full_name}
                           <br />
-                          <span className="text-sm text-muted-foreground">
-                            {appointment.doctors?.specialty}
+                          <span className="text-xs text-muted-foreground">
+                            {specialtyName(appointment)}
                           </span>
                         </TableCell>
                       )}
@@ -1915,16 +1398,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                                   عرض المريض
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  onClick={() => {
-                                    setEditingAppointment(appointment);
-                                    setNewAppointment({
-                                      patient_id: appointment.patient_id,
-                                      doctor_id: appointment.doctor_id,
-                                      scheduled_at: formatDateForInput(appointment.scheduled_at),
-                                      notes: appointment.notes || "",
-                                    });
-                                    setIsDialogOpen(true);
-                                  }}
+                                  onClick={() => openEditAppointment(appointment)}
                                 >
                                   <Pencil className="h-4 w-4 ml-1" />
                                   تعديل
@@ -2009,6 +1483,31 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
               </table>
             </div>
           )}
+          {!isLoading && appointmentsPage && (
+            <div className="flex items-center justify-between gap-2 pt-4 text-sm">
+              <span className="text-muted-foreground">
+                صفحة {appointmentsPage.current_page} من {lastPage} ({appointmentsPage.total} موعد)
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  السابق
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                  disabled={page >= lastPage}
+                >
+                  التالي
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -2042,12 +1541,12 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 <Select
                   value={treatmentRecord.sub_treatment_id}
                   onValueChange={(value) => {
-                    const selectedSubTreatment = subTreatments?.find(st => st.id === value);
+                    const chosenSubTreatment = subTreatments.find(st => st.id === value);
                     setTreatmentRecord({
                       ...treatmentRecord,
                       sub_treatment_id: value,
-                      actual_cost_syp: selectedSubTreatment?.estimated_cost_syp?.toString().replace(/,/g, '') || "",
-                      actual_cost_usd: selectedSubTreatment?.estimated_cost_usd?.toString().replace(/,/g, '') || "",
+                      actual_cost_syp: chosenSubTreatment?.estimated_cost_syp?.toString().replace(/,/g, '') || "",
+                      actual_cost_usd: chosenSubTreatment?.estimated_cost_usd?.toString().replace(/,/g, '') || "",
                       tooth_numbers: [] // Reset tooth selection when changing sub-treatment
                     });
                   }}
@@ -2066,11 +1565,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
               </div>
             </div>
             {(() => {
-              const selectedSubTreatment = subTreatments?.find(st => st.id === treatmentRecord.sub_treatment_id);
-              const toothAssociation = selectedSubTreatment?.tooth_association || "not_related";
-              const isToothSelectionEnabled = toothAssociation !== "not_related";
-              const isSingleToothOnly = toothAssociation === "single_tooth";
-
+              // isToothSelectionEnabled: sub-treatment linked to teeth AND a dental treatment
               return (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   <div className="lg:col-span-2">
@@ -2442,9 +1937,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 <Label className="text-sm font-semibold">خطوات العلاج المنجزة في هذا الموعد</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-lg p-2 bg-muted/30">
                   {treatmentSteps.map((step) => {
-                    const isCompleted = completedSteps?.some(
-                      cs => cs.sub_treatment_step_id === step.id
-                    );
+                    const isCompleted = completedSteps?.includes(step.id);
                     const isSelected = selectedSteps.includes(step.id);
 
                     return (
@@ -2501,7 +1994,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
       <Dialog open={isResumeDialogOpen} onOpenChange={setIsResumeDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>استكمال علاج - {selectedAppointment?.patients?.full_name}</DialogTitle>
+            <DialogTitle>استكمال علاج - {selectedAppointment?.patient?.full_name}</DialogTitle>
           </DialogHeader>
 
           {/* Debug info - remove in production */}
@@ -2525,8 +2018,8 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                       <CardContent className="p-4">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h4 className="font-semibold">{treatment.treatment_name}</h4>
-                            <p className="text-sm text-muted-foreground">{treatment.sub_treatment_name}</p>
+                            <h4 className="font-semibold">{treatment.treatment?.name}</h4>
+                            <p className="text-sm text-muted-foreground">{treatment.sub_treatment?.name}</p>
                             <p className="text-xs text-muted-foreground mt-1">
                               السن: {treatment.tooth_number} | التكلفة: {Math.round(treatment.actual_cost_syp || 0).toLocaleString('en-US')} ل.س - {Math.round(treatment.actual_cost_usd || 0).toLocaleString('en-US')} $
                             </p>
@@ -2546,9 +2039,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   <Label className="text-base font-semibold">خطوات العلاج المتبقية</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto border rounded-lg p-3 bg-muted/30">
                     {resumeTreatmentSteps.map((step) => {
-                      const isCompleted = resumeCompletedSteps?.some(
-                        cs => cs.sub_treatment_step_id === step.id
-                      );
+                      const isCompleted = resumeCompletedSteps?.includes(step.id);
                       const isSelected = selectedSteps.includes(step.id);
 
                       return (
@@ -2648,7 +2139,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 اختر خطة العلاج المراد تنفيذها لهذا الموعد
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {treatmentPlans.map((plan: any) => (
+                {treatmentPlans.map((plan) => (
                   <div
                     key={plan.id}
                     className="p-4 border rounded-lg cursor-pointer transition-colors hover:bg-accent hover:border-primary"
@@ -2660,8 +2151,8 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-medium">{plan.treatments?.name}</p>
-                        <p className="text-sm text-muted-foreground">{plan.sub_treatments?.name}</p>
+                        <p className="font-medium">{plan.treatment?.name}</p>
+                        <p className="text-sm text-muted-foreground">{plan.sub_treatment?.name}</p>
                         <p className="text-xs text-muted-foreground mt-1">رقم السن: {plan.tooth_number}</p>
                       </div>
                     </div>
@@ -2691,7 +2182,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
             }} className="space-y-3">
               <div className="p-2 bg-muted rounded-lg flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">{selectedTreatmentPlan.treatments?.name} - {selectedTreatmentPlan.sub_treatments?.name}</p>
+                  <p className="text-sm font-medium">{selectedTreatmentPlan.treatment?.name} - {selectedTreatmentPlan.sub_treatment?.name}</p>
                   <p className="text-xs text-muted-foreground">رقم السن: {selectedTreatmentPlan.tooth_number}</p>
                 </div>
                 <div className="flex gap-1">
@@ -2712,20 +2203,9 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={async () => {
+                    onClick={() => {
                       if (window.confirm("هل أنت متأكد من حذف هذه الخطة؟")) {
-                        const { error } = await supabase
-                          .from("treatment_plans")
-                          .delete()
-                          .eq("id", selectedTreatmentPlan.id);
-                        if (error) {
-                          toast({ title: "خطأ", description: "فشل في حذف الخطة", variant: "destructive" });
-                        } else {
-                          queryClient.invalidateQueries({ queryKey: ["treatment-plans"] });
-                          setIsExecutePlanDetailsDialogOpen(false);
-                          setSelectedTreatmentPlan(null);
-                          toast({ title: "نجح", description: "تم حذف الخطة بنجاح" });
-                        }
+                        deletePlan(selectedTreatmentPlan.id);
                       }
                     }}
                     className="h-8 w-8 p-0 text-destructive hover:text-destructive"
@@ -2796,7 +2276,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                 <div>
                   <Label className="text-sm">خطوات العلاج</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto mt-2">
-                    {planTreatmentSteps.map((step: any) => (
+                    {planTreatmentSteps.map((step) => (
                       <div
                         key={step.id}
                         className={`flex items-start space-x-2 p-2 border rounded transition-colors ${selectedSteps.includes(step.id) ? 'bg-blue-50 border-blue-200' : 'bg-card'
@@ -2892,8 +2372,8 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
             <div className="space-y-4">
               {/* معلومات الموعد في عامودين */}
               <div className="grid grid-cols-2 gap-3 text-sm p-3 bg-muted/50 rounded-lg">
-                <div><span className="font-medium">المريض:</span> {selectedAppointment.patients?.full_name}</div>
-                <div><span className="font-medium">الطبيب:</span> {selectedAppointment.doctors?.full_name}</div>
+                <div><span className="font-medium">المريض:</span> {selectedAppointment.patient?.full_name}</div>
+                <div><span className="font-medium">الطبيب:</span> {selectedAppointment.doctor?.full_name}</div>
                 <div><span className="font-medium">التاريخ:</span> {format(new Date(selectedAppointment.scheduled_at), 'dd/MM/yyyy')}</div>
                 <div><span className="font-medium">الوقت:</span> {new Date(selectedAppointment.scheduled_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}</div>
                 <div className="col-span-2">
@@ -3008,14 +2488,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                   variant="outline"
                   className="justify-start"
                   onClick={() => {
-                    setEditingAppointment(selectedAppointment);
-                    setNewAppointment({
-                      patient_id: selectedAppointment.patient_id,
-                      doctor_id: selectedAppointment.doctor_id,
-                      scheduled_at: formatDateForInput(selectedAppointment.scheduled_at),
-                      notes: selectedAppointment.notes || "",
-                    });
-                    setIsDialogOpen(true);
+                    openEditAppointment(selectedAppointment);
                     setShowOptionsMenu(false);
                   }}
                 >
@@ -3237,14 +2710,26 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
                     </div>
                     <div className="flex justify-between">
                       <span>سجلات العلاج:</span>
-                      <span className="font-bold text-destructive">{bulkDeletePreview.treatments.length}</span>
+                      <span className="font-bold text-destructive">{bulkDeletePreview.treatment_records.length}</span>
                     </div>
                     {bulkDeletePreview.payments.length > 0 && (
-                      <div className="flex justify-between border-t pt-2 mt-2">
-                        <span>إجمالي المبالغ:</span>
-                        <span className="font-bold">
-                          {bulkDeletePreview.payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0).toLocaleString()}
-                        </span>
+                      <div className="border-t pt-2 mt-2 space-y-1">
+                        {(bulkDeletePreview.totals.payments_syp > 0 || bulkDeletePreview.totals.payments_usd === 0) && (
+                          <div className="flex justify-between">
+                            <span>إجمالي المبالغ (ل.س):</span>
+                            <span className="font-bold">
+                              {bulkDeletePreview.totals.payments_syp.toLocaleString('en-US')} ل.س
+                            </span>
+                          </div>
+                        )}
+                        {bulkDeletePreview.totals.payments_usd > 0 && (
+                          <div className="flex justify-between">
+                            <span>إجمالي المبالغ ($):</span>
+                            <span className="font-bold">
+                              {bulkDeletePreview.totals.payments_usd.toLocaleString('en-US')} $
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3284,7 +2769,7 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
           {selectedAppointment && (
             <div className="space-y-4">
               <div className="text-sm p-3 bg-muted/50 rounded-lg space-y-1">
-                <div><span className="font-medium">المريض:</span> {selectedAppointment.patients?.full_name}</div>
+                <div><span className="font-medium">المريض:</span> {selectedAppointment.patient?.full_name}</div>
                 <div><span className="font-medium">التاريخ:</span> {format(new Date(selectedAppointment.scheduled_at), 'dd/MM/yyyy')}</div>
               </div>
               <form onSubmit={handleAddPayment} className="space-y-4">

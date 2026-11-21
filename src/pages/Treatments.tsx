@@ -7,13 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";import { Plus, Edit, Trash2, ChevronDown, ChevronRight, FileDown, Upload, ChevronsUpDown, Settings2, FolderUp, FolderDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { catalogApi, doctorsApi, specialtiesApi, apiErrorMessage, type Treatment, type SubTreatmentStep, type ToothAssociation } from "@/api/clinic";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { format } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useUserRole } from "@/hooks/useUserRole";
 
 export default function Treatments() {
   const [isTreatmentDialogOpen, setIsTreatmentDialogOpen] = useState(false);
@@ -27,6 +29,36 @@ export default function Treatments() {
   const [editingSubTreatmentId, setEditingSubTreatmentId] = useState<string | null>(null);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [editingTreatmentId, setEditingTreatmentId] = useState<string | null>(null);
+
+  // Which catalog is shown: the clinic catalog (doctor_id NULL) or an independent doctor's own catalog.
+  // Independent doctors always see/manage only their own catalog; super_admin can switch.
+  const { isIndependentDoctor, isSuperAdmin, doctorId } = useUserRole();
+  const [catalogOwner, setCatalogOwner] = useState<string>("clinic");
+  const ownerDoctorId: string | null = isIndependentDoctor
+    ? doctorId
+    : isSuperAdmin && catalogOwner !== "clinic"
+      ? catalogOwner
+      : null;
+
+  const { data: independentDoctors } = useQuery({
+    queryKey: ["independent-doctors"],
+    enabled: isSuperAdmin,
+    queryFn: async () => {
+      const doctors = await doctorsApi.list();
+      return doctors
+        .filter((d) => d.has_own_books)
+        .map((d) => ({ id: d.id, full_name: d.full_name }))
+        .sort((a, b) => a.full_name.localeCompare(b.full_name, "ar"));
+    },
+  });
+
+  // التخصصات
+  const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
+  const { data: specialties } = useQuery({
+    queryKey: ["specialties"],
+    queryFn: () => specialtiesApi.list(),
+  });
+  const defaultSpecialtyId = (specialties?.find((s) => s.is_dental) ?? specialties?.[0])?.id ?? "";
 
   const exportToExcel = () => {
     if (!treatments || treatments.length === 0) return;
@@ -43,8 +75,8 @@ export default function Treatments() {
             'العلاج الفرعي': subTreatment.name,
             'التكلفة بالليرة': subTreatment.estimated_cost_syp || 0,
             'التكلفة بالدولار': subTreatment.estimated_cost_usd || 0,
-            'عدد الخطوات': subTreatment.sub_treatment_steps?.length || 0,
-            'نسبة الإكمال': `${calculateSubTreatmentProgress(subTreatment.sub_treatment_steps)}%`
+            'عدد الخطوات': subTreatment.steps?.length || 0,
+            'نسبة الإكمال': `${calculateSubTreatmentProgress(subTreatment.steps)}%`
           });
         }
       } else {
@@ -107,22 +139,22 @@ export default function Treatments() {
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         
         // تخطي الصف الأول (العناوين)
-        const rows = jsonData.slice(1) as any[][];
-        const validTreatments = [];
+        const rows = jsonData.slice(1) as (string | number | null | undefined)[][];
+        const validTreatments: { name: string; description: string | null }[] = [];
         
         for (const row of rows) {
           if (!row[0]) continue; // تأكد من وجود اسم العلاج
           
           const treatmentData = {
-            name: row[0]?.toString() || '',
-            description: row[1]?.toString() === '-' ? '' : row[1]?.toString() || '',
+            name: row[0]?.toString().trim() || '',
+            description: row[1]?.toString() === '-' ? null : row[1]?.toString() || null,
           };
-          
+
           if (treatmentData.name) {
             validTreatments.push(treatmentData);
           }
         }
-        
+
         if (validTreatments.length === 0) {
           toast({
             title: "خطأ في الاستيراد",
@@ -132,24 +164,43 @@ export default function Treatments() {
           setImportingFile(false);
           return;
         }
-        
-        // إدراج البيانات في قاعدة البيانات
-        const { data: insertedData, error } = await supabase
-          .from("treatments")
-          .insert(validTreatments)
-          .select();
-          
-        if (error) {
+
+        if (!defaultSpecialtyId) {
           toast({
             title: "خطأ في الاستيراد",
-            description: "فشل في حفظ البيانات في قاعدة البيانات",
+            description: "لا توجد تخصصات معرفة",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // إدراج العلاجات واحداً تلو الآخر بالتخصص الافتراضي
+        let inserted = 0;
+        let failed = 0;
+        let lastError = "";
+        for (const t of validTreatments) {
+          try {
+            await catalogApi.createTreatment({ ...t, specialty_id: defaultSpecialtyId, doctor_id: ownerDoctorId });
+            inserted++;
+          } catch (err) {
+            failed++;
+            lastError = apiErrorMessage(err);
+          }
+        }
+
+        queryClient.invalidateQueries({ queryKey: ["treatments"] });
+        if (inserted === 0) {
+          toast({
+            title: "خطأ في الاستيراد",
+            description: lastError || "فشل في حفظ البيانات في قاعدة البيانات",
             variant: "destructive",
           });
         } else {
-          queryClient.invalidateQueries({ queryKey: ["treatments"] });
           toast({
             title: "نجح الاستيراد",
-            description: `تم استيراد ${validTreatments.length} علاج بنجاح`,
+            description: failed > 0
+              ? `تم استيراد ${inserted} علاج، وفشل ${failed} (${lastError})`
+              : `تم استيراد ${inserted} علاج بنجاح`,
           });
         }
       } catch (error) {
@@ -170,13 +221,14 @@ export default function Treatments() {
   const [newTreatment, setNewTreatment] = useState({
     name: "",
     description: "",
+    specialty_id: "",
   });
 
   const [newSubTreatment, setNewSubTreatment] = useState({
     name: "",
     estimated_cost_syp: "",
     estimated_cost_usd: "",
-    tooth_association: "not_related" as "not_related" | "single_tooth" | "multiple_teeth",
+    tooth_association: "not_related" as ToothAssociation,
   });
 
   const [newStep, setNewStep] = useState({
@@ -189,87 +241,71 @@ export default function Treatments() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: treatments, isLoading } = useQuery({
+  const { data: allTreatments, isLoading } = useQuery({
     queryKey: ["treatments"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("treatments")
-        .select(`
-          *,
-          sub_treatments (
-            id, 
-            name,
-            estimated_cost_syp,
-            estimated_cost_usd,
-            tooth_association,
-            sub_treatment_steps (
-              id,
-              step_name,
-              step_description,
-              step_order,
-              completion_percentage
-            )
-          )
-        `)
-        .order("name");
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => catalogApi.list(),
   });
+
+  // super_admin يرى كل الكتالوجات من الخادم: نعرض الكتالوج المختار فقط (null = علاجات العيادة).
+  // الطبيب المستقل يحصل على كتالوجه تلقائياً من الخادم.
+  const treatments: Treatment[] | undefined = allTreatments
+    ?.filter((t) => !isSuperAdmin || (t.doctor_id ?? null) === ownerDoctorId)
+    .filter((t) => specialtyFilter === "all" || t.specialty_id === specialtyFilter);
+
+  const showError = (error: unknown) =>
+    toast({ title: "خطأ", description: apiErrorMessage(error), variant: "destructive" });
+
+  // العلاج الأب للعلاج الفرعي المفتوح: التخصصات غير السنية لا ترتبط بالأسنان
+  const parentTreatment = allTreatments?.find((t) => t.id === selectedTreatmentId);
+  const parentIsDental = parentTreatment?.specialty?.is_dental !== false;
+
+  const emptyTreatment = () => ({ name: "", description: "", specialty_id: defaultSpecialtyId });
 
   const createTreatmentMutation = useMutation({
     mutationFn: async (treatment: typeof newTreatment) => {
-      const { data, error } = await supabase
-        .from("treatments")
-        .insert([treatment])
-        .select();
-      if (error) throw error;
-      return data;
+      return catalogApi.createTreatment({
+        name: treatment.name,
+        description: treatment.description || null,
+        specialty_id: treatment.specialty_id,
+        doctor_id: ownerDoctorId,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       setIsTreatmentDialogOpen(false);
-      setNewTreatment({ name: "", description: "" });
+      setNewTreatment(emptyTreatment());
       toast({ title: "نجح", description: "تم إنشاء العلاج بنجاح" });
     },
+    onError: showError,
   });
 
   const updateTreatmentMutation = useMutation({
     mutationFn: async (treatment: typeof newTreatment & { id: string }) => {
-      const { data, error } = await supabase
-        .from("treatments")
-        .update({
-          name: treatment.name,
-          description: treatment.description,
-        })
-        .eq("id", treatment.id)
-        .select();
-      if (error) throw error;
-      return data;
+      return catalogApi.updateTreatment(treatment.id, {
+        name: treatment.name,
+        description: treatment.description || null,
+        specialty_id: treatment.specialty_id,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       setIsTreatmentDialogOpen(false);
       setEditingTreatmentId(null);
-      setNewTreatment({ name: "", description: "" });
+      setNewTreatment(emptyTreatment());
       toast({ title: "نجح", description: "تم تحديث العلاج بنجاح" });
     },
+    onError: showError,
   });
 
   const createSubTreatmentMutation = useMutation({
     mutationFn: async (subTreatment: typeof newSubTreatment) => {
-      const { data, error } = await supabase
-        .from("sub_treatments")
-        .insert([{
-          name: subTreatment.name,
-          treatment_id: selectedTreatmentId,
-          estimated_cost_syp: parseInt(subTreatment.estimated_cost_syp) || 0,
-          estimated_cost_usd: parseFloat(subTreatment.estimated_cost_usd) || 0,
-          tooth_association: subTreatment.tooth_association
-        }])
-        .select();
-      if (error) throw error;
-      return data;
+      return catalogApi.createSub({
+        name: subTreatment.name,
+        treatment_id: selectedTreatmentId,
+        estimated_cost_syp: parseInt(subTreatment.estimated_cost_syp) || 0,
+        estimated_cost_usd: parseFloat(subTreatment.estimated_cost_usd) || 0,
+        tooth_association: parentIsDental ? subTreatment.tooth_association : "not_related",
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
@@ -277,22 +313,17 @@ export default function Treatments() {
       setNewSubTreatment({ name: "", estimated_cost_syp: "", estimated_cost_usd: "", tooth_association: "not_related" });
       toast({ title: "نجح", description: "تم إضافة العلاج الفرعي بنجاح" });
     },
+    onError: showError,
   });
 
   const updateSubTreatmentMutation = useMutation({
     mutationFn: async (subTreatment: typeof newSubTreatment & { id: string }) => {
-      const { data, error } = await supabase
-        .from("sub_treatments")
-        .update({
-          name: subTreatment.name,
-          estimated_cost_syp: parseInt(subTreatment.estimated_cost_syp) || 0,
-          estimated_cost_usd: parseFloat(subTreatment.estimated_cost_usd) || 0,
-          tooth_association: subTreatment.tooth_association
-        })
-        .eq("id", subTreatment.id)
-        .select();
-      if (error) throw error;
-      return data;
+      return catalogApi.updateSub(subTreatment.id, {
+        name: subTreatment.name,
+        estimated_cost_syp: parseInt(subTreatment.estimated_cost_syp) || 0,
+        estimated_cost_usd: parseFloat(subTreatment.estimated_cost_usd) || 0,
+        tooth_association: parentIsDental ? subTreatment.tooth_association : "not_related",
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
@@ -301,21 +332,18 @@ export default function Treatments() {
       setNewSubTreatment({ name: "", estimated_cost_syp: "", estimated_cost_usd: "", tooth_association: "not_related" });
       toast({ title: "نجح", description: "تم تحديث العلاج الفرعي بنجاح" });
     },
+    onError: showError,
   });
 
   const createStepMutation = useMutation({
     mutationFn: async (step: typeof newStep) => {
-      const { data, error } = await supabase
-        .from("sub_treatment_steps")
-        .insert([{
-          ...step,
-          sub_treatment_id: selectedSubTreatmentId,
-          step_order: parseInt(step.step_order),
-          completion_percentage: parseFloat(step.completion_percentage)
-        }])
-        .select();
-      if (error) throw error;
-      return data;
+      return catalogApi.createStep({
+        step_name: step.step_name,
+        step_description: step.step_description || null,
+        sub_treatment_id: selectedSubTreatmentId,
+        step_order: parseInt(step.step_order),
+        completion_percentage: parseFloat(step.completion_percentage),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
@@ -323,22 +351,17 @@ export default function Treatments() {
       setNewStep({ step_name: "", step_description: "", step_order: "1", completion_percentage: "0" });
       toast({ title: "نجح", description: "تم إضافة الخطوة بنجاح" });
     },
+    onError: showError,
   });
 
   const updateStepMutation = useMutation({
     mutationFn: async (step: typeof newStep & { id: string }) => {
-      const { data, error } = await supabase
-        .from("sub_treatment_steps")
-        .update({
-          step_name: step.step_name,
-          step_description: step.step_description,
-          step_order: parseInt(step.step_order),
-          completion_percentage: parseFloat(step.completion_percentage)
-        })
-        .eq("id", step.id)
-        .select();
-      if (error) throw error;
-      return data;
+      return catalogApi.updateStep(step.id, {
+        step_name: step.step_name,
+        step_description: step.step_description || null,
+        step_order: parseInt(step.step_order),
+        completion_percentage: parseFloat(step.completion_percentage),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
@@ -347,63 +370,64 @@ export default function Treatments() {
       setNewStep({ step_name: "", step_description: "", step_order: "1", completion_percentage: "0" });
       toast({ title: "نجح", description: "تم تحديث الخطوة بنجاح" });
     },
+    onError: showError,
   });
 
   const updateStepPercentageMutation = useMutation({
     mutationFn: async ({ stepId, percentage }: { stepId: string; percentage: number }) => {
-      const { data, error } = await supabase
-        .from("sub_treatment_steps")
-        .update({ completion_percentage: percentage })
-        .eq("id", stepId)
-        .select();
-      if (error) throw error;
-      return data;
+      return catalogApi.updateStep(stepId, { completion_percentage: percentage });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       toast({ title: "نجح", description: "تم تحديث نسبة الإنجاز" });
     },
+    onError: showError,
   });
 
   const deleteTreatmentMutation = useMutation({
     mutationFn: async (treatmentId: string) => {
-      const { error } = await supabase.from("treatments").delete().eq("id", treatmentId);
-      if (error) throw error;
+      await catalogApi.removeTreatment(treatmentId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       toast({ title: "نجح", description: "تم حذف العلاج بنجاح" });
     },
+    onError: showError,
   });
 
   const deleteSubTreatmentMutation = useMutation({
     mutationFn: async (subTreatmentId: string) => {
-      const { error } = await supabase.from("sub_treatments").delete().eq("id", subTreatmentId);
-      if (error) throw error;
+      await catalogApi.removeSub(subTreatmentId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       toast({ title: "نجح", description: "تم حذف العلاج الفرعي بنجاح" });
     },
+    onError: showError,
   });
 
   const deleteStepMutation = useMutation({
     mutationFn: async (stepId: string) => {
-      const { error } = await supabase.from("sub_treatment_steps").delete().eq("id", stepId);
-      if (error) throw error;
+      await catalogApi.removeStep(stepId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["treatments"] });
       toast({ title: "نجح", description: "تم حذف الخطوة بنجاح" });
     },
+    onError: showError,
   });
 
   const handleSubmitTreatment = (e: React.FormEvent) => {
     e.preventDefault();
+    const payload = { ...newTreatment, specialty_id: newTreatment.specialty_id || defaultSpecialtyId };
+    if (!payload.specialty_id) {
+      toast({ title: "خطأ", description: "يرجى اختيار التخصص", variant: "destructive" });
+      return;
+    }
     if (editingTreatmentId) {
-      updateTreatmentMutation.mutate({ ...newTreatment, id: editingTreatmentId });
+      updateTreatmentMutation.mutate({ ...payload, id: editingTreatmentId });
     } else {
-      createTreatmentMutation.mutate(newTreatment);
+      createTreatmentMutation.mutate(payload);
     }
   };
 
@@ -433,7 +457,7 @@ export default function Treatments() {
     );
   };
 
-  const calculateSubTreatmentProgress = (steps: any[] | null) => {
+  const calculateSubTreatmentProgress = (steps: SubTreatmentStep[] | null | undefined) => {
     if (!steps || !Array.isArray(steps) || steps.length === 0) return 0;
     const totalPercentage = steps.reduce((sum, step) => sum + (step.completion_percentage || 0), 0);
     return Math.round(totalPercentage);
@@ -467,19 +491,36 @@ export default function Treatments() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <CardTitle>إدارة العلاجات</CardTitle>
+            <CardTitle>
+              {isIndependentDoctor ? "علاجاتي" : "إدارة العلاجات"}
+            </CardTitle>
             <div className="flex flex-wrap gap-2">
+              {isSuperAdmin && (independentDoctors?.length ?? 0) > 0 && (
+                <Select value={catalogOwner} onValueChange={setCatalogOwner}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="clinic">علاجات العيادة</SelectItem>
+                    {independentDoctors?.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        علاجات د. {d.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Dialog open={isTreatmentDialogOpen} onOpenChange={(open) => {
                 setIsTreatmentDialogOpen(open);
                 if (!open) {
                   setEditingTreatmentId(null);
-                  setNewTreatment({ name: "", description: "" });
+                  setNewTreatment(emptyTreatment());
                 }
               }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => {
                     setEditingTreatmentId(null);
-                    setNewTreatment({ name: "", description: "" });
+                    setNewTreatment(emptyTreatment());
                   }}>
                     <Plus className="ml-2 h-4 w-4" />
                     إضافة علاج
@@ -500,6 +541,24 @@ export default function Treatments() {
                       />
                     </div>
                     <div>
+                      <Label>التخصص</Label>
+                      <Select
+                        value={newTreatment.specialty_id || defaultSpecialtyId}
+                        onValueChange={(value) => setNewTreatment({ ...newTreatment, specialty_id: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="اختر التخصص" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {specialties?.map((sp) => (
+                            <SelectItem key={sp.id} value={sp.id}>
+                              {sp.name_ar}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
                       <Label htmlFor="description">الوصف</Label>
                       <Textarea
                         id="description"
@@ -518,6 +577,19 @@ export default function Treatments() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t">
+            <Select value={specialtyFilter} onValueChange={setSpecialtyFilter}>
+              <SelectTrigger className="w-[180px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل التخصصات</SelectItem>
+                {specialties?.map((sp) => (
+                  <SelectItem key={sp.id} value={sp.id}>
+                    {sp.name_ar}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               size="sm"
@@ -578,7 +650,21 @@ export default function Treatments() {
                     <div className="flex items-center gap-3">
                       <ChevronsUpDown className={`h-5 w-5 text-muted-foreground transition-transform ${isTreatmentExpanded ? 'rotate-180' : ''}`} />
                       <div className="flex-grow">
-                        <h3 className="text-lg font-semibold">{treatment.name}</h3>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-lg font-semibold">{treatment.name}</h3>
+                          {treatment.specialty && (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full border"
+                              style={{
+                                backgroundColor: treatment.specialty.color ? `${treatment.specialty.color}22` : undefined,
+                                borderColor: treatment.specialty.color ?? undefined,
+                                color: treatment.specialty.color ?? undefined,
+                              }}
+                            >
+                              {treatment.specialty.name_ar}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-muted-foreground text-sm">{treatment.description}</p>
                         {!isTreatmentExpanded && treatment.sub_treatments && (
                           <p className="text-xs text-muted-foreground">{treatment.sub_treatments.length} علاج فرعي</p>
@@ -602,7 +688,7 @@ export default function Treatments() {
                         size="sm"
                         onClick={() => {
                           setEditingTreatmentId(treatment.id);
-                          setNewTreatment({ name: treatment.name, description: treatment.description || "" });
+                          setNewTreatment({ name: treatment.name, description: treatment.description || "", specialty_id: treatment.specialty_id });
                           setIsTreatmentDialogOpen(true);
                         }}
                         title="تعديل العلاج"
@@ -627,7 +713,7 @@ export default function Treatments() {
                       <div className="space-y-3">
                         {treatment.sub_treatments.map((subTreatment) => {
                           const isExpanded = expandedSubTreatments.includes(subTreatment.id);
-                          const progress = calculateSubTreatmentProgress(subTreatment.sub_treatment_steps);
+                          const progress = calculateSubTreatmentProgress(subTreatment.steps);
 
                           return (
                             <div key={subTreatment.id} className="border rounded p-3 bg-muted/50">
@@ -675,7 +761,7 @@ export default function Treatments() {
                                             name: subTreatment.name,
                                             estimated_cost_syp: Math.round(subTreatment.estimated_cost_syp || 0).toString(),
                                             estimated_cost_usd: (subTreatment.estimated_cost_usd || 0).toString(),
-                                            tooth_association: (subTreatment as any).tooth_association || "not_related"
+                                            tooth_association: subTreatment.tooth_association || "not_related"
                                           });
                                           setIsSubTreatmentDialogOpen(true);
                                         }}
@@ -695,11 +781,11 @@ export default function Treatments() {
 
                               <Collapsible open={isExpanded}>
                                 <CollapsibleContent className="mt-3">
-                                  {subTreatment.sub_treatment_steps && Array.isArray(subTreatment.sub_treatment_steps) && subTreatment.sub_treatment_steps.length > 0 ? (
+                                  {subTreatment.steps && Array.isArray(subTreatment.steps) && subTreatment.steps.length > 0 ? (
                                     <div className="space-y-2">
-                                      {subTreatment.sub_treatment_steps
-                                        .sort((a: any, b: any) => a.step_order - b.step_order)
-                                        .map((step: any, index: number) => (
+                                      {[...subTreatment.steps]
+                                        .sort((a, b) => a.step_order - b.step_order)
+                                        .map((step, index) => (
                                           <div key={step.id} className="flex items-center justify-between bg-background p-2 rounded border">
                                             <div className="flex-1">
                                               <div className="flex items-center space-x-2">
@@ -828,13 +914,14 @@ export default function Treatments() {
                 />
               </div>
             </div>
+            {parentIsDental && (
             <div>
               <Label>الارتباط بالأسنان</Label>
               <RadioGroup 
                 value={newSubTreatment.tooth_association} 
                 onValueChange={(value) => setNewSubTreatment({ 
                   ...newSubTreatment, 
-                  tooth_association: value as "not_related" | "single_tooth" | "multiple_teeth" 
+                  tooth_association: value as ToothAssociation
                 })}
                 className="flex flex-col space-y-2 mt-2"
               >
@@ -852,6 +939,7 @@ export default function Treatments() {
                 </div>
               </RadioGroup>
             </div>
+            )}
             <Button type="submit" disabled={createSubTreatmentMutation.isPending || updateSubTreatmentMutation.isPending}>
               {(createSubTreatmentMutation.isPending || updateSubTreatmentMutation.isPending) 
                 ? "جاري الحفظ..." 

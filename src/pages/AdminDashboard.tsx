@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { adminApi, apiErrorMessage } from "@/api/clinic";
+import { useUserRole } from "@/hooks/useUserRole";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,28 +17,7 @@ export default function AdminDashboard() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
-
-  useEffect(() => {
-    checkUserRole();
-  }, []);
-
-  const checkUserRole = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      setUserRole(roleData?.role || null);
-    } catch (error) {
-      console.error('Error checking user role:', error);
-    }
-  };
+  const { userRole } = useUserRole();
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,10 +31,10 @@ export default function AdminDashboard() {
       return;
     }
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8) {
       toast({
         title: "خطأ",
-        description: "كلمة المرور يجب أن تكون 6 أحرف على الأقل",
+        description: "كلمة المرور يجب أن تكون 8 أحرف على الأقل",
         variant: "destructive",
       });
       return;
@@ -62,11 +42,8 @@ export default function AdminDashboard() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
-      });
-
-      if (error) throw error;
+      // The server now checks the current password before changing it.
+      await adminApi.changeOwnPassword(currentPassword, newPassword);
 
       toast({
         title: "تم التحديث",
@@ -79,7 +56,7 @@ export default function AdminDashboard() {
     } catch (error) {
       toast({
         title: "خطأ",
-        description: error instanceof Error ? error.message : "فشل في تحديث كلمة المرور",
+        description: apiErrorMessage(error),
         variant: "destructive",
       });
     } finally {

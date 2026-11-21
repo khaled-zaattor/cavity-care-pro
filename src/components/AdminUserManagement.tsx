@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { AdminUser, adminApi, apiErrorMessage } from "@/api/clinic";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,13 +12,9 @@ import { toast } from "@/hooks/use-toast";
 import { Shield, Users, Lock, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 
-interface UserProfile {
-  id: string;
-  email: string;
-  full_name: string;
-  created_at: string;
-  role?: string;
-}
+type UserProfile = AdminUser & { created_at?: string };
+
+const emptyNewUser = { email: "", full_name: "", role: "receptionist", password: "" };
 
 export function AdminUserManagement() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -28,6 +24,8 @@ export function AdminUserManagement() {
   const [selectedRole, setSelectedRole] = useState<string>("");
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newUser, setNewUser] = useState(emptyNewUser);
 
   useEffect(() => {
     fetchUsers();
@@ -35,37 +33,24 @@ export function AdminUserManagement() {
 
   const fetchUsers = async () => {
     try {
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*');
-
-      if (profilesError) throw profilesError;
-
-      // Fetch roles for each user
-      const usersWithRoles = await Promise.all(
-        (profiles || []).map(async (profile) => {
-          const { data: roleData } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', profile.id)
-            .maybeSingle();
-
-          return {
-            ...profile,
-            role: roleData?.role || 'No role assigned'
-          };
-        })
-      );
-
-      setUsers(usersWithRoles);
+      setUsers(await adminApi.users());
     } catch (error) {
-      toast({
-        title: "خطأ",
-        description: "فشل في تحميل قائمة المستخدمين",
-        variant: "destructive",
-      });
+      toast({ title: "خطأ", description: apiErrorMessage(error), variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Accounts are created here (there is no public sign-up any more).
+  const handleCreateUser = async () => {
+    try {
+      await adminApi.createUser(newUser);
+      toast({ title: "تم الإنشاء", description: "تم إنشاء المستخدم بنجاح" });
+      setCreateDialogOpen(false);
+      setNewUser(emptyNewUser);
+      fetchUsers();
+    } catch (error) {
+      toast({ title: "خطأ", description: apiErrorMessage(error), variant: "destructive" });
     }
   };
 
@@ -73,27 +58,13 @@ export function AdminUserManagement() {
     if (!selectedUser || !newPassword) return;
 
     try {
-      const { error } = await supabase.auth.admin.updateUserById(
-        selectedUser.id,
-        { password: newPassword }
-      );
-
-      if (error) throw error;
-
-      toast({
-        title: "تم التحديث",
-        description: "تم تحديث كلمة المرور بنجاح",
-      });
-
+      await adminApi.resetPassword(selectedUser.id, newPassword);
+      toast({ title: "تم التحديث", description: "تم تحديث كلمة المرور بنجاح" });
       setPasswordDialogOpen(false);
       setNewPassword("");
       setSelectedUser(null);
     } catch (error) {
-      toast({
-        title: "خطأ",
-        description: "فشل في تحديث كلمة المرور",
-        variant: "destructive",
-      });
+      toast({ title: "خطأ", description: apiErrorMessage(error), variant: "destructive" });
     }
   };
 
@@ -101,38 +72,24 @@ export function AdminUserManagement() {
     if (!selectedUser || !selectedRole) return;
 
     try {
-      // Remove existing role
-      await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', selectedUser.id);
-
-      // Assign new role
-      const { error } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: selectedUser.id,
-          role: selectedRole as any,
-          assigned_by: (await supabase.auth.getUser()).data.user?.id
-        });
-
-      if (error) throw error;
-
-      toast({
-        title: "تم التحديث",
-        description: "تم تعيين الدور بنجاح",
-      });
-
+      await adminApi.updateUser(selectedUser.id, { role: selectedRole });
+      toast({ title: "تم التحديث", description: "تم تعيين الدور بنجاح" });
       setRoleDialogOpen(false);
       setSelectedRole("");
       setSelectedUser(null);
-      fetchUsers(); // Refresh the list
+      fetchUsers();
     } catch (error) {
-      toast({
-        title: "خطأ",
-        description: "فشل في تعيين الدور",
-        variant: "destructive",
-      });
+      toast({ title: "خطأ", description: apiErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  const toggleActive = async (user: UserProfile) => {
+    try {
+      await adminApi.updateUser(user.id, { is_active: !user.is_active });
+      toast({ title: "تم التحديث", description: user.is_active ? "تم إيقاف الحساب" : "تم تفعيل الحساب" });
+      fetchUsers();
+    } catch (error) {
+      toast({ title: "خطأ", description: apiErrorMessage(error), variant: "destructive" });
     }
   };
 
@@ -188,6 +145,52 @@ export function AdminUserManagement() {
                 إدارة المستخدمين وتعيين الأدوار وتحديث كلمات المرور
               </CardDescription>
             </div>
+            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="mr-auto">
+                  <UserPlus className="h-4 w-4 ml-1" />
+                  مستخدم جديد
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>إنشاء مستخدم جديد</DialogTitle>
+                  <DialogDescription>كلمة المرور 8 أحرف على الأقل. يمكن للمستخدم تغييرها لاحقاً.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="newUserName">الاسم الكامل</Label>
+                    <Input id="newUserName" value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label htmlFor="newUserEmail">البريد الإلكتروني</Label>
+                    <Input id="newUserEmail" type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>الدور</Label>
+                    <Select value={newUser.role} onValueChange={(v) => setNewUser({ ...newUser, role: v })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="doctor">طبيب</SelectItem>
+                        <SelectItem value="dentist_assistant">مساعد طبيب الأسنان</SelectItem>
+                        <SelectItem value="receptionist">موظف استقبال</SelectItem>
+                        <SelectItem value="super_admin">مدير عام</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="newUserPassword">كلمة المرور</Label>
+                    <Input id="newUserPassword" type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>إلغاء</Button>
+                  <Button onClick={handleCreateUser}>إنشاء</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </CardHeader>
         <CardContent>
@@ -206,6 +209,7 @@ export function AdminUserManagement() {
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">
                     {user.full_name || "غير محدد"}
+                    {!user.is_active && <Badge variant="outline" className="mr-2">موقوف</Badge>}
                   </TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>
@@ -214,7 +218,7 @@ export function AdminUserManagement() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {format(new Date(user.created_at), 'dd/MM/yyyy')}
+                    {user.created_at ? format(new Date(user.created_at), 'dd/MM/yyyy') : "-"}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
@@ -265,6 +269,10 @@ export function AdminUserManagement() {
                           </DialogFooter>
                         </DialogContent>
                       </Dialog>
+
+                      <Button variant="outline" size="sm" onClick={() => toggleActive(user)}>
+                        {user.is_active ? "إيقاف" : "تفعيل"}
+                      </Button>
 
                       <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
                         <DialogTrigger asChild>

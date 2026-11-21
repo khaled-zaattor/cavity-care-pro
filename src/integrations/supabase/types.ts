@@ -148,28 +148,34 @@ export type Database = {
           created_at: string
           email: string
           full_name: string
+          has_own_books: boolean
           id: string
           phone_number: string
           specialty: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
           email: string
           full_name: string
+          has_own_books?: boolean
           id?: string
           phone_number: string
           specialty: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
           email?: string
           full_name?: string
+          has_own_books?: boolean
           id?: string
           phone_number?: string
           specialty?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -534,6 +540,7 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          doctor_id: string | null
           id: string
           name: string
           updated_at: string
@@ -541,6 +548,7 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          doctor_id?: string | null
           id?: string
           name: string
           updated_at?: string
@@ -548,11 +556,20 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          doctor_id?: string | null
           id?: string
           name?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "treatments_doctor_id_fkey"
+            columns: ["doctor_id"]
+            isOneToOne: false
+            referencedRelation: "doctors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       unfinished_sub_treatments: {
         Row: {
@@ -660,6 +677,7 @@ export type Database = {
           appointment_id: string | null
           clinic_arrival_time: string
           created_at: string
+          doctor_id: string | null
           examination_room_entry_time: string | null
           id: string
           patient_id: string
@@ -670,6 +688,7 @@ export type Database = {
           appointment_id?: string | null
           clinic_arrival_time?: string
           created_at?: string
+          doctor_id?: string | null
           examination_room_entry_time?: string | null
           id?: string
           patient_id: string
@@ -680,6 +699,7 @@ export type Database = {
           appointment_id?: string | null
           clinic_arrival_time?: string
           created_at?: string
+          doctor_id?: string | null
           examination_room_entry_time?: string | null
           id?: string
           patient_id?: string
@@ -687,6 +707,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "waiting_list_doctor_id_fkey"
+            columns: ["doctor_id"]
+            isOneToOne: false
+            referencedRelation: "doctors"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "waiting_list_appointment_id_fkey"
             columns: ["appointment_id"]
@@ -708,6 +735,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      current_doctor_id: { Args: Record<PropertyKey, never>; Returns: string | null }
+      is_independent_doctor: { Args: Record<PropertyKey, never>; Returns: boolean }
+      can_see_doctor_books: { Args: { _doc: string | null }; Returns: boolean }
+      can_see_doctor_schedule: { Args: { _doc: string | null }; Returns: boolean }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]

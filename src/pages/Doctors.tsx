@@ -1,16 +1,19 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Edit, Eye, Trash2, UserCheck } from "lucide-react";
+import { Search, Plus, Edit, Eye, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useUserRole } from "@/hooks/useUserRole";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,211 +25,282 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { adminApi, apiErrorMessage, Doctor, doctorsApi, Specialty, specialtiesApi } from "@/api/clinic";
 
-interface Doctor {
-  id: string;
+const NO_USER = "__none__";
+
+interface DoctorForm {
+  id?: string;
   full_name: string;
   email: string;
   phone_number: string;
-  specialty: string;
-  created_at: string;
-  updated_at: string;
+  specialty_ids: string[];
+  primary_specialty_id: string | null;
+  user_id: string | null;
+  has_own_books: boolean;
+}
+
+const emptyForm: DoctorForm = {
+  full_name: "",
+  email: "",
+  phone_number: "",
+  specialty_ids: [],
+  primary_specialty_id: null,
+  user_id: null,
+  has_own_books: false,
+};
+
+function SpecialtyChips({ doctor }: { doctor: Doctor }) {
+  if (!doctor.specialties.length) return <span className="text-muted-foreground">{doctor.specialty ?? "-"}</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {doctor.specialties.map((s) => (
+        <Badge
+          key={s.id}
+          variant={s.is_primary ? "default" : "outline"}
+          style={s.is_primary && s.color ? { backgroundColor: s.color } : undefined}
+        >
+          {s.name_ar}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+/** Checkboxes for the doctor's specialties + which one is primary. */
+function SpecialtyPicker({
+  specialties,
+  form,
+  setForm,
+}: {
+  specialties: Specialty[];
+  form: DoctorForm;
+  setForm: (f: DoctorForm) => void;
+}) {
+  const toggle = (id: string, checked: boolean) => {
+    const ids = checked ? [...form.specialty_ids, id] : form.specialty_ids.filter((x) => x !== id);
+    const primary = ids.includes(form.primary_specialty_id ?? "") ? form.primary_specialty_id : ids[0] ?? null;
+    setForm({ ...form, specialty_ids: ids, primary_specialty_id: primary });
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label>التخصصات</Label>
+      <div className="grid grid-cols-2 gap-2 rounded-md border p-3">
+        {specialties.map((s) => (
+          <label key={s.id} className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox checked={form.specialty_ids.includes(s.id)} onCheckedChange={(c) => toggle(s.id, c === true)} />
+            {s.name_ar}
+          </label>
+        ))}
+      </div>
+      {form.specialty_ids.length > 1 && (
+        <div>
+          <Label>التخصص الرئيسي</Label>
+          <Select value={form.primary_specialty_id ?? undefined} onValueChange={(v) => setForm({ ...form, primary_specialty_id: v })}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {specialties
+                .filter((s) => form.specialty_ids.includes(s.id))
+                .map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name_ar}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Doctors() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
-  const [newDoctor, setNewDoctor] = useState({
-    full_name: "",
-    email: "",
-    phone_number: "",
-    specialty: "",
-  });
+  const [newDoctor, setNewDoctor] = useState<DoctorForm>(emptyForm);
+  const [editingDoctor, setEditingDoctor] = useState<DoctorForm | null>(null);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { isSuperAdmin } = useUserRole();
 
-  const { data: doctors, isLoading } = useQuery({
-    queryKey: ["doctors", searchTerm],
-    queryFn: async () => {
-      let query = supabase.from("doctors").select("*");
-      
-      if (searchTerm) {
-        query = query.or(`full_name.ilike.%${searchTerm}%,specialty.ilike.%${searchTerm}%`);
-      }
-      
-      const { data, error } = await query.order("full_name");
-      if (error) throw error;
-      return data as Doctor[];
-    },
+  // Logins with the "doctor" role, so a doctor record can be linked to a login
+  const { data: doctorUsers } = useQuery({
+    queryKey: ["doctor-role-users"],
+    enabled: isSuperAdmin,
+    queryFn: () => adminApi.users("doctor"),
+  });
+
+  const { data: specialties = [] } = useQuery({ queryKey: ["specialties"], queryFn: () => specialtiesApi.list() });
+
+  const { data: allDoctors, isLoading } = useQuery({ queryKey: ["doctors"], queryFn: () => doctorsApi.list() });
+
+  const doctors = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return allDoctors;
+    return allDoctors?.filter(
+      (d) => d.full_name.toLowerCase().includes(q) || d.specialties.some((s) => s.name_ar.toLowerCase().includes(q)),
+    );
+  }, [allDoctors, searchTerm]);
+
+  const openAddDialog = (open: boolean) => {
+    setIsAddDialogOpen(open);
+    if (open) {
+      const dental = specialties.find((s) => s.is_dental) ?? specialties[0];
+      setNewDoctor({ ...emptyForm, specialty_ids: dental ? [dental.id] : [], primary_specialty_id: dental?.id ?? null });
+    }
+  };
+
+  const toPayload = (f: DoctorForm) => ({
+    full_name: f.full_name,
+    email: f.email || null,
+    phone_number: f.phone_number || null,
+    specialty_ids: f.specialty_ids,
+    primary_specialty_id: f.primary_specialty_id,
+    ...(isSuperAdmin ? { user_id: f.user_id, has_own_books: f.has_own_books } : {}),
   });
 
   const createDoctorMutation = useMutation({
-    mutationFn: async (doctor: typeof newDoctor) => {
-      const { data, error } = await supabase.from("doctors").insert([doctor]).select();
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (f: DoctorForm) => doctorsApi.create(toPayload(f)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["doctors"] });
       setIsAddDialogOpen(false);
-      setNewDoctor({
-        full_name: "",
-        email: "",
-        phone_number: "",
-        specialty: "",
-      });
-      toast({
-        title: "نجح",
-        description: "تم إضافة الدكتور بنجاح",
-      });
+      toast({ title: "نجح", description: "تم إضافة الدكتور بنجاح" });
     },
-    onError: () => {
-      toast({
-        title: "خطأ",
-        description: "فشل في إضافة الدكتور",
-        variant: "destructive",
-      });
-    },
+    onError: (e) => toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" }),
   });
 
   const updateDoctorMutation = useMutation({
-    mutationFn: async (doctor: Doctor) => {
-      const { data, error } = await supabase
-        .from("doctors")
-        .update({
-          full_name: doctor.full_name,
-          email: doctor.email,
-          phone_number: doctor.phone_number,
-          specialty: doctor.specialty,
-        })
-        .eq("id", doctor.id)
-        .select();
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (f: DoctorForm) => doctorsApi.update(f.id!, toPayload(f)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["doctors"] });
       setIsEditDialogOpen(false);
       setEditingDoctor(null);
-      toast({
-        title: "نجح",
-        description: "تم تحديث بيانات الدكتور بنجاح",
-      });
+      toast({ title: "نجح", description: "تم تحديث بيانات الدكتور بنجاح" });
     },
-    onError: () => {
-      toast({
-        title: "خطأ",
-        description: "فشل في تحديث بيانات الدكتور",
-        variant: "destructive",
-      });
-    },
+    onError: (e) => toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" }),
   });
 
   const deleteDoctorMutation = useMutation({
-    mutationFn: async (doctorId: string) => {
-      const { error } = await supabase.from("doctors").delete().eq("id", doctorId);
-      if (error) throw error;
-    },
+    mutationFn: (doctorId: string) => doctorsApi.remove(doctorId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["doctors"] });
-      toast({
-        title: "نجح",
-        description: "تم حذف الدكتور بنجاح",
-      });
+      toast({ title: "نجح", description: "تم حذف الدكتور بنجاح" });
     },
-    onError: () => {
-      toast({
-        title: "خطأ",
-        description: "فشل في حذف الدكتور",
-        variant: "destructive",
-      });
-    },
+    onError: (e) => toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" }),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newDoctor.specialty_ids.length) {
+      toast({ title: "خطأ", description: "اختر تخصصاً واحداً على الأقل", variant: "destructive" });
+      return;
+    }
     createDoctorMutation.mutate(newDoctor);
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingDoctor) {
-      updateDoctorMutation.mutate(editingDoctor);
+    if (!editingDoctor) return;
+    if (!editingDoctor.specialty_ids.length) {
+      toast({ title: "خطأ", description: "اختر تخصصاً واحداً على الأقل", variant: "destructive" });
+      return;
     }
+    updateDoctorMutation.mutate(editingDoctor);
   };
 
   const openEditDialog = (doctor: Doctor) => {
-    setEditingDoctor(doctor);
+    setEditingDoctor({
+      id: doctor.id,
+      full_name: doctor.full_name,
+      email: doctor.email ?? "",
+      phone_number: doctor.phone_number ?? "",
+      specialty_ids: doctor.specialties.map((s) => s.id),
+      primary_specialty_id: doctor.primary_specialty_id,
+      user_id: doctor.user_id,
+      has_own_books: doctor.has_own_books,
+    });
     setIsEditDialogOpen(true);
   };
 
-  const viewDoctorAppointments = (doctorId: string) => {
-    navigate(`/doctor-profile/${doctorId}`);
-  };
+  const viewDoctorAppointments = (doctorId: string) => navigate(`/doctor-profile/${doctorId}`);
+
+  const deleteButton = (doctor: Doctor, compact: boolean) => (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Trash2 className={compact ? "h-4 w-4" : "h-4 w-4 ml-1"} />
+          {!compact && "حذف"}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+          <AlertDialogDescription>
+            هل أنت متأكد من حذف الدكتور {doctor.full_name}؟ تبقى مواعيده وحساباته السابقة محفوظة.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>إلغاء</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => deleteDoctorMutation.mutate(doctor.id)}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            حذف
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  const basicFields = (form: DoctorForm, setForm: (f: DoctorForm) => void, prefix: string) => (
+    <>
+      <div>
+        <Label htmlFor={`${prefix}full_name`}>الاسم الكامل</Label>
+        <Input id={`${prefix}full_name`} value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} required />
+      </div>
+      <div>
+        <Label htmlFor={`${prefix}email`}>البريد الإلكتروني</Label>
+        <Input id={`${prefix}email`} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+      </div>
+      <div>
+        <Label htmlFor={`${prefix}phone_number`}>رقم الهاتف</Label>
+        <Input id={`${prefix}phone_number`} value={form.phone_number} onChange={(e) => setForm({ ...form, phone_number: e.target.value })} />
+      </div>
+      <SpecialtyPicker specialties={specialties} form={form} setForm={setForm} />
+    </>
+  );
 
   return (
     <div className="space-y-4 lg:space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl lg:text-3xl font-bold">الأطباء</h1>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto">
-              <Plus className="ml-2 h-4 w-4" />
-              إضافة دكتور
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>إضافة دكتور جديد</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="full_name">الاسم الكامل</Label>
-                <Input
-                  id="full_name"
-                  value={newDoctor.full_name}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, full_name: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="email">البريد الإلكتروني</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={newDoctor.email}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, email: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="phone_number">رقم الهاتف</Label>
-                <Input
-                  id="phone_number"
-                  value={newDoctor.phone_number}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, phone_number: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="specialty">التخصص</Label>
-                <Input
-                  id="specialty"
-                  value={newDoctor.specialty}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, specialty: e.target.value })}
-                  required
-                />
-              </div>
-              <Button type="submit" disabled={createDoctorMutation.isPending}>
-                {createDoctorMutation.isPending ? "جاري الإضافة..." : "إضافة دكتور"}
+        {isSuperAdmin && (
+          <Dialog open={isAddDialogOpen} onOpenChange={openAddDialog}>
+            <DialogTrigger asChild>
+              <Button className="w-full sm:w-auto">
+                <Plus className="ml-2 h-4 w-4" />
+                إضافة دكتور
               </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>إضافة دكتور جديد</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {basicFields(newDoctor, setNewDoctor, "")}
+                <Button type="submit" disabled={createDoctorMutation.isPending}>
+                  {createDoctorMutation.isPending ? "جاري الإضافة..." : "إضافة دكتور"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>
@@ -270,53 +344,32 @@ export default function Doctors() {
                   <TableBody>
                     {doctors?.map((doctor) => (
                       <TableRow key={doctor.id}>
-                        <TableCell className="font-medium">{doctor.full_name}</TableCell>
+                        <TableCell className="font-medium">
+                          {doctor.full_name}
+                          {doctor.has_own_books && (
+                            <Badge variant="secondary" className="mr-2">حسابات مستقلة</Badge>
+                          )}
+                        </TableCell>
                         <TableCell>{doctor.email}</TableCell>
                         <TableCell>{doctor.phone_number}</TableCell>
-                        <TableCell>{doctor.specialty}</TableCell>
+                        <TableCell>
+                          <SpecialtyChips doctor={doctor} />
+                        </TableCell>
                         <TableCell>
                           <div className="flex space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => viewDoctorAppointments(doctor.id)}
-                            >
+                            <Button variant="outline" size="sm" onClick={() => viewDoctorAppointments(doctor.id)}>
                               <Eye className="h-4 w-4 ml-1" />
                               المواعيد
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openEditDialog(doctor)}
-                            >
-                              <Edit className="h-4 w-4 ml-1" />
-                              تعديل
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="outline" size="sm">
-                                  <Trash2 className="h-4 w-4 ml-1" />
-                                  حذف
+                            {isSuperAdmin && (
+                              <>
+                                <Button variant="outline" size="sm" onClick={() => openEditDialog(doctor)}>
+                                  <Edit className="h-4 w-4 ml-1" />
+                                  تعديل
                                 </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    هل أنت متأكد من حذف الدكتور {doctor.full_name}؟ لا يمكن التراجع عن هذا الإجراء.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteDoctorMutation.mutate(doctor.id)}
-                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  >
-                                    حذف
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                                {deleteButton(doctor, false)}
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -332,51 +385,29 @@ export default function Doctors() {
                     <div className="space-y-3">
                       <div className="flex justify-between items-start">
                         <div>
-                          <h3 className="font-semibold text-lg">{doctor.full_name}</h3>
-                          <p className="text-sm text-muted-foreground">{doctor.specialty}</p>
+                          <h3 className="font-semibold text-lg">
+                            {doctor.full_name}
+                            {doctor.has_own_books && (
+                              <Badge variant="secondary" className="mr-2">حسابات مستقلة</Badge>
+                            )}
+                          </h3>
+                          <SpecialtyChips doctor={doctor} />
                         </div>
                         <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => viewDoctorAppointments(doctor.id)}
-                          >
+                          <Button variant="outline" size="sm" onClick={() => viewDoctorAppointments(doctor.id)}>
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEditDialog(doctor)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="sm">
-                                <Trash2 className="h-4 w-4" />
+                          {isSuperAdmin && (
+                            <>
+                              <Button variant="outline" size="sm" onClick={() => openEditDialog(doctor)}>
+                                <Edit className="h-4 w-4" />
                               </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  هل أنت متأكد من حذف الدكتور {doctor.full_name}؟
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => deleteDoctorMutation.mutate(doctor.id)}
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                >
-                                  حذف
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                              {deleteButton(doctor, true)}
+                            </>
+                          )}
                         </div>
                       </div>
-                      
+
                       <div className="grid grid-cols-1 gap-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">البريد الإلكتروني:</span>
@@ -398,49 +429,50 @@ export default function Doctors() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>تعديل بيانات الدكتور</DialogTitle>
           </DialogHeader>
           {editingDoctor && (
             <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="edit_full_name">الاسم الكامل</Label>
-                <Input
-                  id="edit_full_name"
-                  value={editingDoctor.full_name}
-                  onChange={(e) => setEditingDoctor({ ...editingDoctor, full_name: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="edit_email">البريد الإلكتروني</Label>
-                <Input
-                  id="edit_email"
-                  type="email"
-                  value={editingDoctor.email}
-                  onChange={(e) => setEditingDoctor({ ...editingDoctor, email: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="edit_phone_number">رقم الهاتف</Label>
-                <Input
-                  id="edit_phone_number"
-                  value={editingDoctor.phone_number}
-                  onChange={(e) => setEditingDoctor({ ...editingDoctor, phone_number: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="edit_specialty">التخصص</Label>
-                <Input
-                  id="edit_specialty"
-                  value={editingDoctor.specialty}
-                  onChange={(e) => setEditingDoctor({ ...editingDoctor, specialty: e.target.value })}
-                  required
-                />
-              </div>
+              {basicFields(editingDoctor, (f) => setEditingDoctor(f), "edit_")}
+              {isSuperAdmin && (
+                <>
+                  <div>
+                    <Label>حساب الدخول المرتبط</Label>
+                    <Select
+                      value={editingDoctor.user_id ?? NO_USER}
+                      onValueChange={(v) => setEditingDoctor({ ...editingDoctor, user_id: v === NO_USER ? null : v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_USER}>بدون حساب</SelectItem>
+                        {doctorUsers?.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.full_name || u.email} {u.full_name && u.email ? `(${u.email})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">المستخدمون الذين لديهم دور "طبيب" فقط</p>
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <Label htmlFor="edit_has_own_books">حسابات مستقلة</Label>
+                      <p className="text-xs text-muted-foreground">
+                        علاجات خاصة وحسابات مالية منفصلة (مثل طبيب الأطفال). يشارك المرضى وغرفة الانتظار.
+                      </p>
+                    </div>
+                    <Switch
+                      id="edit_has_own_books"
+                      checked={editingDoctor.has_own_books}
+                      onCheckedChange={(checked) => setEditingDoctor({ ...editingDoctor, has_own_books: checked })}
+                    />
+                  </div>
+                </>
+              )}
               <Button type="submit" disabled={updateDoctorMutation.isPending}>
                 {updateDoctorMutation.isPending ? "جاري التحديث..." : "تحديث البيانات"}
               </Button>

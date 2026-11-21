@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { adminApi } from "@/api/clinic";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -37,16 +37,7 @@ export function RolePermissionsManagement() {
 
   const { data: permissions, isLoading } = useQuery({
     queryKey: ["role_permissions"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("role_permissions")
-        .select("*")
-        .order("role")
-        .order("resource");
-      
-      if (error) throw error;
-      return data as RolePermission[];
-    },
+    queryFn: async () => (await adminApi.rolePermissions()) as RolePermission[],
   });
 
   const updatePermission = useMutation({
@@ -59,12 +50,9 @@ export function RolePermissionsManagement() {
       field: "can_create" | "can_update" | "can_delete";
       value: boolean;
     }) => {
-      const { error } = await supabase
-        .from("role_permissions")
-        .update({ [field]: value })
-        .eq("id", id);
-      
-      if (error) throw error;
+      const row = permissions?.find((p) => p.id === id);
+      if (!row) return;
+      await adminApi.setRolePermission({ role: row.role, resource: row.resource, [field]: value });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["role_permissions"] });

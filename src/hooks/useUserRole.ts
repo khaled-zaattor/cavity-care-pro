@@ -1,39 +1,25 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/components/AuthWrapper";
 
 export type AppRole = "super_admin" | "doctor" | "dentist_assistant" | "receptionist";
 
+/**
+ * Role info of the logged-in user. Same return shape as the Supabase version,
+ * but read from the session loaded once by AuthWrapper (GET /auth/me) instead
+ * of two queries on every page.
+ */
 export function useUserRole() {
-  const [userRole, setUserRole] = useState<AppRole | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, loading } = useAuth();
 
-  useEffect(() => {
-    const checkUserRole = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const { data: roleData } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", session.user.id)
-            .single();
-          
-          if (roleData?.role) {
-            setUserRole(roleData.role as AppRole);
-          }
-        }
-      } catch (error) {
-        console.error("Error checking user role:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const userRole = (user?.role ?? null) as AppRole | null;
+  const hasOwnBooks = !!user?.has_own_books;
 
-    checkUserRole();
-  }, []);
-
-  // Helper function to check if user can manage payments
-  const canManagePayments = userRole !== "dentist_assistant";
-
-  return { userRole, isLoading, canManagePayments };
+  return {
+    userRole,
+    isLoading: loading,
+    canManagePayments: userRole !== "dentist_assistant",
+    doctorId: user?.doctor_id ?? null,
+    hasOwnBooks,
+    isIndependentDoctor: userRole === "doctor" && hasOwnBooks,
+    isSuperAdmin: userRole === "super_admin",
+  };
 }
