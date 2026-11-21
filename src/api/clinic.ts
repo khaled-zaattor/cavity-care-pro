@@ -422,7 +422,9 @@ export const adminApi = {
 };
 
 export type ActivitySubject =
-  | "appointment" | "payment" | "treatment_record" | "treatment_plan" | "patient" | "doctor" | "user";
+  | "appointment" | "payment" | "treatment_record" | "treatment_plan" | "patient" | "doctor" | "user"
+  // price list (treatments / sub-treatments) and settings (specialties / role permissions)
+  | "treatment" | "settings";
 export type ActivityEvent = "created" | "updated" | "deleted" | "imported";
 
 export interface ActivityLogEntry {

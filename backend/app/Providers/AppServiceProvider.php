@@ -6,6 +6,10 @@ use App\Models\Appointment;
 use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\Payment;
+use App\Models\RolePermission;
+use App\Models\Specialty;
+use App\Models\SubTreatment;
+use App\Models\Treatment;
 use App\Models\TreatmentPlan;
 use App\Models\TreatmentRecord;
 use App\Models\User;
@@ -42,6 +46,8 @@ class AppServiceProvider extends ServiceProvider
         foreach ([
             Appointment::class, Payment::class, TreatmentRecord::class,
             TreatmentPlan::class, Patient::class, Doctor::class, User::class,
+            // Price list and settings: a price change affects every future bill.
+            Treatment::class, SubTreatment::class, Specialty::class, RolePermission::class,
         ] as $model) {
             $model::observe(ActivityObserver::class);
         }

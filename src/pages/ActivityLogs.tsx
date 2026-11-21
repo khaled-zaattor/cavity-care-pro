@@ -11,7 +11,9 @@ import {
   ClipboardList,
   FileClock,
   FileUp,
+  ListOrdered,
   Pencil,
+  Settings2,
   Plus,
   Search,
   ShieldCheck,
@@ -51,6 +53,8 @@ const SUBJECTS: Record<ActivitySubject, { label: string; icon: LucideIcon }> = {
   patient: { label: "المرضى", icon: UserRound },
   doctor: { label: "الأطباء", icon: Stethoscope },
   user: { label: "المستخدمون", icon: ShieldCheck },
+  treatment: { label: "قائمة العلاجات والأسعار", icon: ListOrdered },
+  settings: { label: "التخصصات والصلاحيات", icon: Settings2 },
 };
 
 const EVENTS: Record<ActivityEvent, { label: string; icon: LucideIcon; dot: string; chip: string }> = {
@@ -100,11 +104,22 @@ const FIELD_LABELS: Record<string, string> = {
   has_own_books: "حسابات مستقلة",
   role: "الدور",
   is_active: "الحساب",
+  estimated_cost_syp: "السعر (ل.س)",
+  estimated_cost_usd: "السعر ($)",
+  name: "الاسم",
+  name_ar: "الاسم",
+  tooth_association: "الارتباط بالأسنان",
+  specialty_id: "التخصص",
+  is_dental: "تخصص أسنان",
+  can_create: "الإضافة",
+  can_update: "التعديل",
+  can_delete: "الحذف",
 };
 const VALUE_LABELS: Record<string, Record<string, string>> = {
   status: { Scheduled: "مجدول", Completed: "مكتمل", Cancelled: "ملغى" },
   role: { super_admin: "مدير النظام", doctor: "طبيب", dentist_assistant: "مساعد طبيب", receptionist: "موظف استقبال" },
   is_active: { true: "فعّال", false: "موقوف" },
+  tooth_association: { not_related: "غير مرتبط بسن", single_tooth: "سن واحد", multiple_teeth: "عدة أسنان" },
 };
 
 function showValue(field: string, value: unknown): string {

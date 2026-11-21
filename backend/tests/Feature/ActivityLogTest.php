@@ -86,4 +86,44 @@ class ActivityLogTest extends TestCase
         Appointment::query()->first()->update(['notes' => 'n']);
         $this->assertSame(0, ActivityLog::where('subject_type', 'appointment')->count());
     }
+
+    public function test_price_list_and_settings_changes_are_logged(): void
+    {
+        $sub = $this->clinicTreatment->subTreatments()->first();
+
+        // price change → money line naming old and new price
+        $this->actingAs($this->admin)->patchJson("/sub-treatments/{$sub->id}", ['estimated_cost_syp' => 250])->assertOk();
+        $price = ActivityLog::where('subject_type', 'treatment')->sole();
+        $this->assertStringContainsString('عدّل العلاج الفرعي «حشوة ضوئية» في «حشوة»: السعر من', $price->description);
+        $this->assertStringContainsString('إلى 250 ل.س', $price->description);
+        $this->assertTrue($price->is_money);
+
+        // saving the same price again is not a change
+        $this->actingAs($this->admin)->patchJson("/sub-treatments/{$sub->id}", ['estimated_cost_syp' => 250])->assertOk();
+        $this->assertSame(1, ActivityLog::where('subject_type', 'treatment')->count());
+
+        // role permission toggle (first save creates the row) and a specialty
+        $this->actingAs($this->admin)->putJson('/role-permissions', ['role' => 'receptionist', 'resource' => 'payments', 'can_delete' => true])->assertOk();
+        $this->actingAs($this->admin)->putJson('/role-permissions', ['role' => 'receptionist', 'resource' => 'payments', 'can_delete' => false])->assertOk();
+        $perms = ActivityLog::where('subject_type', 'settings')->orderBy('created_at')->orderBy('id')->pluck('description');
+        $this->assertCount(2, $perms);
+        $this->assertTrue($perms->contains(fn ($d) => str_contains($d, 'غيّر صلاحيات دور موظف استقبال على «payments»: سمح بـالحذف')));
+        $this->assertTrue($perms->contains(fn ($d) => str_contains($d, 'منع الحذف')));
+
+        $this->actingAs($this->admin)->postJson('/specialties', ['name_ar' => 'جلدية'])->assertCreated();
+        $this->assertSame(1, ActivityLog::where('description', 'like', '%أضاف التخصص جلدية%')->count());
+    }
+
+    public function test_patient_history_filter(): void
+    {
+        $patient = $this->clinicAppointment->patient;
+        $this->actingAs($this->receptionist)->patchJson("/patients/{$patient->id}", ['phone_number' => '0999'])->assertOk();
+        $this->actingAs($this->admin)->postJson('/payments', [
+            'appointment_id' => $this->clinicAppointment->id, 'amount' => 10, 'currency' => 'USD',
+        ])->assertCreated();
+        $this->actingAs($this->receptionist)->postJson('/patients', ['full_name' => 'مريض آخر'])->assertCreated();
+
+        $this->actingAs($this->admin)->getJson("/activity-logs?patient_id={$patient->id}")
+            ->assertOk()->assertJsonPath('total', 2);
+    }
 }

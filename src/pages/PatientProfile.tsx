@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useUserRole } from "@/hooks/useUserRole";
+import { PatientActivityHistory } from "@/components/PatientActivityHistory";
 import {
   apiErrorMessage,
   appointmentsApi,
@@ -36,14 +37,14 @@ export default function PatientProfile() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { canManagePayments } = useUserRole();
+  const { canManagePayments, isSuperAdmin } = useUserRole();
 
   const [isAppointmentDialogOpen, setIsAppointmentDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isEditPaymentDialogOpen, setIsEditPaymentDialogOpen] = useState(false);
   const [isTreatmentPlanDialogOpen, setIsTreatmentPlanDialogOpen] = useState(false);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
-  const [activeSection, setActiveSection] = useState("all"); // "all", "appointments", "treatments", "payments"
+  const [activeSection, setActiveSection] = useState("all"); // "all", "appointments", "treatments", "payments", "history" (admin)
   const [editingPayments, setEditingPayments] = useState<{[key: string]: string}>({});
   const [isDeleteTreatmentDialogOpen, setIsDeleteTreatmentDialogOpen] = useState(false);
   const [treatmentToDelete, setTreatmentToDelete] = useState<string | null>(null);
@@ -412,6 +413,15 @@ export default function PatientProfile() {
           >
             جميع المدفوعات
           </Button>
+          {isSuperAdmin && (
+            <Button
+              variant={activeSection === "history" ? "default" : "outline"}
+              onClick={() => setActiveSection("history")}
+              size="sm"
+            >
+              سجل التغييرات
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1541,6 +1551,8 @@ export default function PatientProfile() {
           </CardContent>
         </Card>
       )}
+
+      {isSuperAdmin && activeSection === "history" && patientId && <PatientActivityHistory patientId={patientId} />}
     </div>
   );
 }

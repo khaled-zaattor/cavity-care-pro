@@ -6,6 +6,8 @@ use App\Models\Appointment;
 use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\Payment;
+use App\Models\RolePermission;
+use App\Models\Specialty;
 use App\Models\SubTreatment;
 use App\Models\Treatment;
 use App\Models\TreatmentPlan;
@@ -54,6 +56,11 @@ class ActivityObserver
             $model instanceof Doctor => $this->log('created', $model, 'أضاف الطبيب '.Activity::doctorName($model->full_name)),
             $model instanceof User => $this->log('created', $model,
                 'أنشأ المستخدم '.($model->full_name ?: $model->email).' بدور '.(self::ROLES[$model->role] ?? 'بدون دور')),
+            $model instanceof Treatment => $this->log('created', $model,
+                'أضاف العلاج «'.$model->name.'» إلى قائمة العلاجات'.$this->catalogOwner($model)),
+            $model instanceof SubTreatment => $this->log('created', $model,
+                'أضاف العلاج الفرعي «'.$model->name.'» إلى «'.$this->treatmentName($model->treatment_id).'»'.$this->priceText($model), money: true),
+            $model instanceof Specialty => $this->log('created', $model, 'أضاف التخصص '.$model->name_ar),
             default => null,
         };
     }
@@ -70,6 +77,17 @@ class ActivityObserver
             $model instanceof Patient => $this->patientUpdated($model),
             $model instanceof Doctor => $this->doctorUpdated($model),
             $model instanceof User => $this->userUpdated($model),
+            $model instanceof Treatment => $model->wasChanged(['name', 'specialty_id']) && $this->log('updated', $model,
+                'عدّل العلاج «'.$model->name.'»'.($model->wasChanged('name') ? ' (كان «'.$model->getOriginal('name').'»)' : '')
+                .($model->wasChanged('specialty_id') ? ' ونقله إلى تخصص '.$this->specialtyName($model->specialty_id) : ''),
+                props: $this->diff($model, ['name', 'specialty_id'])),
+            $model instanceof SubTreatment => $this->subTreatmentUpdated($model),
+            $model instanceof Specialty => $model->wasChanged(['name_ar', 'is_dental', 'is_active']) && $this->log('updated', $model,
+                'عدّل التخصص '.$model->name_ar
+                .($model->wasChanged('is_active') ? ($model->is_active ? ' (فعّله)' : ' (أوقفه)') : '')
+                .($model->wasChanged('is_dental') ? ($model->is_dental ? ' (جعله تخصص أسنان)' : ' (لم يعد تخصص أسنان)') : ''),
+                props: $this->diff($model, ['name_ar', 'is_dental', 'is_active'])),
+            $model instanceof RolePermission => $this->permissionChanged($model),
             default => null,
         };
     }
@@ -87,8 +105,20 @@ class ActivityObserver
                 'حذف خطة علاج '.$this->treatmentLabel($model).' للمريض '.$this->patient($model->patient_id)),
             $model instanceof Patient => $this->log('deleted', $model, 'حذف المريض '.$model->full_name),
             $model instanceof Doctor => $this->log('deleted', $model, 'حذف الطبيب '.Activity::doctorName($model->full_name)),
+            $model instanceof Treatment => $this->log('deleted', $model, 'حذف العلاج «'.$model->name.'» من قائمة العلاجات'.$this->catalogOwner($model)),
+            $model instanceof SubTreatment => $this->log('deleted', $model,
+                'حذف العلاج الفرعي «'.$model->name.'» من «'.$this->treatmentName($model->treatment_id).'»'),
+            $model instanceof Specialty => $this->log('deleted', $model, 'حذف التخصص '.$model->name_ar),
             default => null,
         };
+    }
+
+    /** RolePermission rows are upserted: a newly created row is also a permission change. */
+    public function saved(Model $model): void
+    {
+        if ($model instanceof RolePermission && $model->wasRecentlyCreated) {
+            $this->permissionChanged($model);
+        }
     }
 
     // ---- per-model update sentences ---------------------------------------
@@ -203,6 +233,46 @@ class ActivityObserver
             props: $this->diff($u, ['role', 'is_active', 'full_name']));
     }
 
+    private function subTreatmentUpdated(SubTreatment $s): void
+    {
+        $bits = [];
+        foreach (['estimated_cost_syp' => 'SYP', 'estimated_cost_usd' => 'USD'] as $field => $cur) {
+            if ($s->wasChanged($field) && (float) $s->getOriginal($field) !== (float) $s->$field) {
+                $bits[] = 'السعر من '.Activity::money($s->getOriginal($field), $cur).' إلى '.Activity::money($s->$field, $cur);
+            }
+        }
+        $money = $bits !== [];
+        if ($s->wasChanged('name')) {
+            $bits[] = 'الاسم (كان «'.$s->getOriginal('name').'»)';
+        }
+        if ($s->wasChanged('tooth_association')) {
+            $bits[] = 'ارتباطه بالأسنان';
+        }
+        if ($bits === []) {
+            return;
+        }
+
+        $this->log('updated', $s, 'عدّل العلاج الفرعي «'.$s->name.'» في «'.$this->treatmentName($s->treatment_id).'»: '.implode('، ', $bits),
+            money: $money, props: $this->diff($s, ['estimated_cost_syp', 'estimated_cost_usd', 'name', 'tooth_association']));
+    }
+
+    private function permissionChanged(RolePermission $p): void
+    {
+        $labels = ['can_create' => 'الإضافة', 'can_update' => 'التعديل', 'can_delete' => 'الحذف'];
+        $bits = [];
+        foreach ($labels as $field => $label) {
+            if ($p->wasRecentlyCreated ? $p->$field : $p->wasChanged($field)) {
+                $bits[] = ($p->$field ? 'سمح بـ' : 'منع ').$label;
+            }
+        }
+        if ($bits === []) {
+            return;
+        }
+
+        $this->log('updated', $p, 'غيّر صلاحيات دور '.(self::ROLES[$p->role] ?? $p->role).' على «'.$p->resource.'»: '.implode('، ', $bits),
+            props: $this->diff($p, array_keys($labels)));
+    }
+
     // ---- helpers -----------------------------------------------------------
 
     private function log(string $event, Model $model, string $sentence, bool $money = false, ?array $props = null): void
@@ -225,6 +295,8 @@ class ActivityObserver
             $model instanceof Patient => 'patient',
             $model instanceof Doctor => 'doctor',
             $model instanceof User => 'user',
+            $model instanceof Treatment, $model instanceof SubTreatment => 'treatment',
+            $model instanceof Specialty, $model instanceof RolePermission => 'settings',
         };
     }
 
@@ -259,6 +331,35 @@ class ActivityObserver
         $label = trim(($t ?? '').($s && $s !== $t ? ' - '.$s : ''), ' -') ?: 'غير معروف';
 
         return '«'.$label.'»'.($m->tooth_number ? ' (السن '.$m->tooth_number.')' : '');
+    }
+
+    private function treatmentName(?string $id): string
+    {
+        return ($id ? Treatment::withTrashed()->whereKey($id)->value('name') : null) ?? 'غير معروف';
+    }
+
+    private function specialtyName(?string $id): string
+    {
+        return ($id ? Specialty::whereKey($id)->value('name_ar') : null) ?? 'غير معروف';
+    }
+
+    /** " (قائمة د. سمر)" for an independent doctor's own catalog. */
+    private function catalogOwner(Treatment $t): string
+    {
+        return $t->doctor_id ? ' (قائمة '.$this->doctor($t->doctor_id).')' : '';
+    }
+
+    private function priceText(SubTreatment $s): string
+    {
+        $p = [];
+        if ((float) $s->estimated_cost_syp > 0) {
+            $p[] = Activity::money($s->estimated_cost_syp, 'SYP');
+        }
+        if ((float) $s->estimated_cost_usd > 0) {
+            $p[] = Activity::money($s->estimated_cost_usd, 'USD');
+        }
+
+        return $p ? ' بسعر '.implode(' + ', $p) : '';
     }
 
     private function hasCost(TreatmentRecord $r): bool
