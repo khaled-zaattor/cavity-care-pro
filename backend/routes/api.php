@@ -3,10 +3,14 @@
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ClinicSettingController;
 use App\Http\Controllers\Api\DoctorController;
+use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\MoneyController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PatientHistoryController;
+use App\Http\Controllers\Api\PrescriptionController;
+use App\Http\Controllers\Api\PrescriptionTemplateController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RolePermissionController;
 use App\Http\Controllers\Api\SpecialtyController;
@@ -99,6 +103,20 @@ Route::middleware('auth:sanctum')->group(function () {
     // سجل النشاطات (super_admin)
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
     Route::get('/activity-logs/users', [ActivityLogController::class, 'users']);
+
+    // Phase E: medicines, prescriptions, templates, printed header
+    Route::apiResource('medicines', MedicineController::class)->except('show');
+    Route::post('/prescriptions/{prescription}/printed', [PrescriptionController::class, 'markPrinted']);
+    Route::apiResource('prescriptions', PrescriptionController::class);
+    Route::get('/prescription-templates', [PrescriptionTemplateController::class, 'index']);
+    Route::post('/prescription-templates', [PrescriptionTemplateController::class, 'store']);
+    Route::patch('/prescription-templates/{template}', [PrescriptionTemplateController::class, 'update']);
+    Route::delete('/prescription-templates/{template}', [PrescriptionTemplateController::class, 'destroy']);
+    Route::get('/clinic-settings', [ClinicSettingController::class, 'show']);
+    Route::put('/clinic-settings', [ClinicSettingController::class, 'update']);
+    Route::get('/clinic-settings/logo', [ClinicSettingController::class, 'logo']);
+    Route::post('/clinic-settings/logo', [ClinicSettingController::class, 'uploadLogo']);
+    Route::delete('/clinic-settings/logo', [ClinicSettingController::class, 'deleteLogo']);
 
     Route::post('/auth/password', [AuthController::class, 'changePassword']);
 });

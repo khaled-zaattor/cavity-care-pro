@@ -19,6 +19,7 @@ export const Layout = ({ children }: LayoutProps) => {
     { path: "/patients", label: "المرضى", icon: Users },
     { path: "/appointments", label: "المواعيد", icon: Calendar },
     { path: "/treatments", label: "العلاجات", icon: FileText },
+    { path: "/medicines", label: "الأدوية", icon: FileText },
     { path: "/activity-logs", label: "سجل النشاطات", icon: FileText },
     { path: "/doctors", label: "الأطباء", icon: Users },
     { path: "/specialties", label: "التخصصات", icon: FileText },

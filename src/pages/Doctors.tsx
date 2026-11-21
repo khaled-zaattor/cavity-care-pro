@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Search, Plus, Edit, Eye, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +39,7 @@ interface DoctorForm {
   primary_specialty_id: string | null;
   user_id: string | null;
   has_own_books: boolean;
+  print_header: string;
 }
 
 const emptyForm: DoctorForm = {
@@ -48,6 +50,7 @@ const emptyForm: DoctorForm = {
   primary_specialty_id: null,
   user_id: null,
   has_own_books: false,
+  print_header: "",
 };
 
 function SpecialtyChips({ doctor }: { doctor: Doctor }) {
@@ -162,7 +165,7 @@ export default function Doctors() {
     phone_number: f.phone_number || null,
     specialty_ids: f.specialty_ids,
     primary_specialty_id: f.primary_specialty_id,
-    ...(isSuperAdmin ? { user_id: f.user_id, has_own_books: f.has_own_books } : {}),
+    ...(isSuperAdmin ? { user_id: f.user_id, has_own_books: f.has_own_books, print_header: f.print_header.trim() || null } : {}),
   });
 
   const createDoctorMutation = useMutation({
@@ -224,6 +227,7 @@ export default function Doctors() {
       primary_specialty_id: doctor.primary_specialty_id,
       user_id: doctor.user_id,
       has_own_books: doctor.has_own_books,
+      print_header: doctor.print_header ?? "",
     });
     setIsEditDialogOpen(true);
   };
@@ -470,6 +474,19 @@ export default function Doctors() {
                       checked={editingDoctor.has_own_books}
                       onCheckedChange={(checked) => setEditingDoctor({ ...editingDoctor, has_own_books: checked })}
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit_print_header">ترويسة الوصفة</Label>
+                    <Textarea
+                      id="edit_print_header"
+                      rows={3}
+                      maxLength={2000}
+                      value={editingDoctor.print_header}
+                      onChange={(e) => setEditingDoctor({ ...editingDoctor, print_header: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      سطر أو أكثر يظهر تحت اسم الطبيب في الوصفة المطبوعة (الشهادات، الاختصاص، رقم الترخيص...)
+                    </p>
                   </div>
                 </>
               )}

@@ -1,7 +1,7 @@
 // Typed client for the Laravel API (backend/routes/api.php).
 // Relation names follow Laravel: `patient`, `doctor`, `specialty`, `treatment`,
 // `sub_treatment`, `treatment_records`, `payments` (Supabase used plural names).
-import { api } from "./client";
+import { api, API_BASE } from "./client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -424,7 +424,7 @@ export const adminApi = {
 export type ActivitySubject =
   | "appointment" | "payment" | "treatment_record" | "treatment_plan" | "patient" | "doctor" | "user"
   // price list (treatments / sub-treatments) and settings (specialties / role permissions)
-  | "treatment" | "settings";
+  | "treatment" | "settings" | "prescription";
 export type ActivityEvent = "created" | "updated" | "deleted" | "imported";
 
 export interface ActivityLogEntry {
@@ -458,6 +458,127 @@ export interface ActivityLogFilters {
 export const activityLogsApi = {
   list: (params: ActivityLogFilters = {}) => api.get<Paginated<ActivityLogEntry>>("/activity-logs", { ...params }),
   users: () => d(api.get<Data<{ id: string; name: string }[]>>("/activity-logs/users")),
+};
+
+// ---------------------------------------------------------------------------
+// Phase E: medicines, prescriptions, templates, printed header
+// ---------------------------------------------------------------------------
+
+export interface Medicine {
+  id: string;
+  trade_name: string;
+  generic_name: string | null;
+  form: string | null;
+  strength: string | null;
+  default_dose: string | null;
+  default_frequency: string | null;
+  default_duration: string | null;
+  notes: string | null;
+  specialty_id: string | null;
+  is_active: boolean;
+}
+
+export interface PrescriptionItemInput {
+  medicine_id?: string | null;
+  medicine_name?: string | null;
+  dose?: string | null;
+  frequency?: string | null;
+  duration?: string | null;
+  route?: string | null;
+  quantity?: string | null;
+  instructions?: string | null;
+}
+
+export interface PrescriptionItem extends PrescriptionItemInput {
+  id: string;
+  medicine_name: string;
+  sort_order: number;
+}
+
+export interface Prescription {
+  id: string;
+  number: number;
+  patient_id: string;
+  doctor_id: string;
+  specialty_id: string | null;
+  appointment_id: string | null;
+  diagnosis: string | null;
+  notes: string | null;
+  issued_at: string;
+  printed_at: string | null;
+  items: PrescriptionItem[];
+  patient?: { id: string; full_name: string; date_of_birth: string | null; phone_number: string | null } | null;
+  doctor?: { id: string; full_name: string; print_header: string | null } | null;
+  specialty?: { id: string; name_ar: string } | null;
+}
+
+export interface ClinicHeader {
+  name: string | null;
+  name_en: string | null;
+  address: string | null;
+  phone: string | null;
+  footer: string | null;
+  has_logo: boolean;
+}
+
+export interface PrescriptionTemplate {
+  id: string;
+  doctor_id: string;
+  name: string;
+  diagnosis: string | null;
+  notes: string | null;
+  items: PrescriptionItem[];
+}
+
+export interface ClinicSettings {
+  clinic_name: string | null;
+  clinic_name_en: string | null;
+  clinic_address: string | null;
+  clinic_phone: string | null;
+  prescription_footer: string | null;
+  has_logo: boolean;
+}
+
+export const medicinesApi = {
+  list: (params: { q?: string; include_inactive?: boolean; specialty_id?: string } = {}) =>
+    d(api.get<Data<Medicine[]>>("/medicines", { ...params, include_inactive: params.include_inactive ? 1 : undefined })),
+  create: (body: Partial<Medicine> & { trade_name: string }) => d(api.post<Data<Medicine>>("/medicines", body)),
+  update: (id: string, body: Partial<Medicine>) => d(api.patch<Data<Medicine>>(`/medicines/${id}`, body)),
+  remove: (id: string) => api.delete(`/medicines/${id}`),
+};
+
+export const prescriptionsApi = {
+  list: (params: { patient_id?: string; doctor_id?: string; page?: number; per_page?: number } = {}) =>
+    api.get<Paginated<Prescription>>("/prescriptions", params),
+  get: (id: string) => api.get<{ data: Prescription; clinic: ClinicHeader }>(`/prescriptions/${id}`),
+  create: (body: { patient_id: string; doctor_id?: string | null; appointment_id?: string | null; specialty_id?: string | null; diagnosis?: string | null; notes?: string | null; items: PrescriptionItemInput[] }) =>
+    d(api.post<Data<Prescription>>("/prescriptions", body)),
+  update: (id: string, body: { diagnosis?: string | null; notes?: string | null; specialty_id?: string | null; items?: PrescriptionItemInput[] }) =>
+    d(api.patch<Data<Prescription>>(`/prescriptions/${id}`, body)),
+  remove: (id: string) => api.delete(`/prescriptions/${id}`),
+  markPrinted: (id: string) => api.post(`/prescriptions/${id}/printed`),
+};
+
+export const prescriptionTemplatesApi = {
+  list: (doctor_id?: string) => d(api.get<Data<PrescriptionTemplate[]>>("/prescription-templates", { doctor_id })),
+  create: (body: { doctor_id?: string | null; name: string; diagnosis?: string | null; notes?: string | null; items: PrescriptionItemInput[] }) =>
+    d(api.post<Data<PrescriptionTemplate>>("/prescription-templates", body)),
+  update: (id: string, body: { name?: string; diagnosis?: string | null; notes?: string | null; items?: PrescriptionItemInput[] }) =>
+    d(api.patch<Data<PrescriptionTemplate>>(`/prescription-templates/${id}`, body)),
+  remove: (id: string) => api.delete(`/prescription-templates/${id}`),
+};
+
+export const clinicSettingsApi = {
+  get: () => d(api.get<Data<ClinicSettings>>("/clinic-settings")),
+  update: (body: Partial<Omit<ClinicSettings, "has_logo">>) => d(api.put<Data<ClinicSettings>>("/clinic-settings", body)),
+  uploadLogo: (file: File) => {
+    const form = new FormData();
+    form.append("logo", file);
+    return d(api.post<Data<ClinicSettings>>("/clinic-settings/logo", form));
+  },
+  removeLogo: () => d(api.delete<Data<ClinicSettings>>("/clinic-settings/logo")),
+  /** <img src> for the logo (same-origin, session cookie). */
+  logoUrl: (bust?: string | number) => `${API_BASE}/clinic-settings/logo${bust ? `?v=${bust}` : ""}`,
 };
 
 // ---------------------------------------------------------------------------

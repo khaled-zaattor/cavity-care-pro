@@ -46,6 +46,11 @@ return [
         'activity_logs' => ['view' => [$S], 'create' => [], 'update' => [], 'delete' => [$S]],
         'users' => ['view' => [$S], 'create' => [$S], 'update' => [$S], 'delete' => [$S]],
         'role_permissions' => ['view' => $all, 'create' => [$S], 'update' => [$S], 'delete' => [$S]],
+        // Phase E: doctors write prescriptions; anyone may view/print (reception hands them out).
+        'medicines' => ['view' => $all, 'create' => [$S, $D], 'update' => [$S, $D], 'delete' => [$S, $D]],
+        'prescriptions' => ['view' => $all, 'create' => [$S, $D], 'update' => [$S, $D], 'delete' => [$S, $D]],
+        'prescription_templates' => ['view' => [$S, $D], 'create' => [$S, $D], 'update' => [$S, $D], 'delete' => [$S, $D]],
+        'clinic_settings' => ['view' => $all, 'create' => [$S], 'update' => [$S], 'delete' => [$S]],
     ],
 
 ];

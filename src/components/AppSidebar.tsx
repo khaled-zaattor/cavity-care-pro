@@ -1,4 +1,4 @@
-import { Users, Calendar, FileText, Stethoscope, UserCheck, Settings, FileSpreadsheet, ListChecks, MonitorPlay, Wallet, Layers, BarChart3 } from "lucide-react";
+import { Users, Calendar, FileText, Stethoscope, UserCheck, Settings, FileSpreadsheet, ListChecks, MonitorPlay, Wallet, Layers, BarChart3, Pill } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useUserRole } from "@/hooks/useUserRole";
 
@@ -21,6 +21,7 @@ const navItems = [
   { path: "/doctors", label: "الأطباء", icon: UserCheck, allowedRoles: ['super_admin', 'doctor', 'dentist_assistant'] },
   { path: "/appointments", label: "المواعيد", icon: Calendar, allowedRoles: ['super_admin', 'doctor', 'dentist_assistant'] },
   { path: "/treatments", label: "العلاجات", icon: FileText, allowedRoles: ['super_admin', 'doctor'] },
+  { path: "/medicines", label: "الأدوية", icon: Pill, allowedRoles: ['super_admin', 'doctor'] },
   { path: "/specialties", label: "التخصصات", icon: Layers, allowedRoles: ['super_admin'] },
   { path: "/reports", label: "التقارير المالية", icon: BarChart3, allowedRoles: ['super_admin'] },
   { path: "/waiting-list-management", label: "إدارة لائحة الانتظار", icon: ListChecks, allowedRoles: ['super_admin', 'doctor', 'dentist_assistant', 'receptionist'] },
@@ -34,6 +35,7 @@ const independentDoctorPaths = [
   "/patients",
   "/appointments",
   "/treatments",
+  "/medicines",
   "/my-finances",
   "/reports",
   "/waiting-list-management",

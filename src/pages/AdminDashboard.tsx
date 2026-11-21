@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
-import { Shield, Lock, Users, Settings, BarChart3, KeyRound } from "lucide-react";
+import { Shield, Lock, Users, Settings, BarChart3, KeyRound, Printer } from "lucide-react";
+import { ClinicPrintSettings } from "@/components/ClinicPrintSettings";
 import { AdminUserManagement } from "@/components/AdminUserManagement";
 import { SystemStatistics } from "@/components/SystemStatistics";
 import { RolePermissionsManagement } from "@/components/RolePermissionsManagement";
@@ -95,7 +96,7 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs defaultValue="statistics" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto">
           <TabsTrigger value="statistics" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             إحصائيات النظام
@@ -112,7 +113,15 @@ export default function AdminDashboard() {
             <Lock className="h-4 w-4" />
             تغيير كلمة المرور
           </TabsTrigger>
+          <TabsTrigger value="print" className="flex items-center gap-2">
+            <Printer className="h-4 w-4" />
+            إعدادات الطباعة
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="print" className="space-y-4">
+          <ClinicPrintSettings />
+        </TabsContent>
 
         <TabsContent value="statistics" className="space-y-4">
           <SystemStatistics />

@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ClipboardList,
   FileClock,
+  FileText,
   FileUp,
   ListOrdered,
   Pencil,
@@ -55,6 +56,7 @@ const SUBJECTS: Record<ActivitySubject, { label: string; icon: LucideIcon }> = {
   user: { label: "المستخدمون", icon: ShieldCheck },
   treatment: { label: "قائمة العلاجات والأسعار", icon: ListOrdered },
   settings: { label: "التخصصات والصلاحيات", icon: Settings2 },
+  prescription: { label: "الوصفات الطبية", icon: FileText },
 };
 
 const EVENTS: Record<ActivityEvent, { label: string; icon: LucideIcon; dot: string; chip: string }> = {

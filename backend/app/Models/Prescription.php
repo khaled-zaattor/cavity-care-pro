@@ -1,0 +1,52 @@
+<?php
+
+namespace App\Models;
+
+use App\Support\DoctorBooks;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Prescription extends Model
+{
+    use HasUuids, SoftDeletes;
+
+    protected $fillable = [
+        'number', 'patient_id', 'doctor_id', 'specialty_id', 'appointment_id', 'created_by',
+        'diagnosis', 'notes', 'issued_at', 'printed_at',
+    ];
+
+    protected function casts(): array
+    {
+        return ['number' => 'integer', 'issued_at' => 'datetime', 'printed_at' => 'datetime'];
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(PrescriptionItem::class)->orderBy('sort_order');
+    }
+
+    public function patient(): BelongsTo
+    {
+        return $this->belongsTo(Patient::class);
+    }
+
+    public function doctor(): BelongsTo
+    {
+        return $this->belongsTo(Doctor::class);
+    }
+
+    public function specialty(): BelongsTo
+    {
+        return $this->belongsTo(Specialty::class);
+    }
+
+    /** Independent doctors' prescriptions stay in their books. */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        return DoctorBooks::for($user)->scopeBooks($query, 'prescriptions.doctor_id');
+    }
+}

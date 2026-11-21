@@ -20,6 +20,8 @@ import WaitingListManagement from "./pages/WaitingListManagement";
 import MyFinances from "./pages/MyFinances";
 import Specialties from "./pages/Specialties";
 import Reports from "./pages/Reports";
+import Medicines from "./pages/Medicines";
+import PrintPrescription from "./pages/PrintPrescription";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -56,6 +58,9 @@ const App = () => (
             <Route path="/my-finances" element={<Layout><MyFinances /></Layout>} />
             <Route path="/specialties" element={<Layout><Specialties /></Layout>} />
             <Route path="/reports" element={<Layout><Reports /></Layout>} />
+            <Route path="/medicines" element={<Layout><Medicines /></Layout>} />
+            {/* A4 print page: no sidebar/header */}
+            <Route path="/print/prescription/:prescriptionId" element={<PrintPrescription />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH -ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

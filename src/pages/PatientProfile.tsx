@@ -17,6 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useUserRole } from "@/hooks/useUserRole";
 import { PatientActivityHistory } from "@/components/PatientActivityHistory";
+import { PatientPrescriptions } from "@/components/PatientPrescriptions";
+import { PrescriptionDialog } from "@/components/PrescriptionDialog";
 import {
   apiErrorMessage,
   appointmentsApi,
@@ -37,14 +39,16 @@ export default function PatientProfile() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { canManagePayments, isSuperAdmin } = useUserRole();
+  const { canManagePayments, isSuperAdmin, userRole } = useUserRole();
+  const canPrescribe = userRole === "super_admin" || userRole === "doctor";
+  const [isPrescriptionOpen, setIsPrescriptionOpen] = useState(false);
 
   const [isAppointmentDialogOpen, setIsAppointmentDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isEditPaymentDialogOpen, setIsEditPaymentDialogOpen] = useState(false);
   const [isTreatmentPlanDialogOpen, setIsTreatmentPlanDialogOpen] = useState(false);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
-  const [activeSection, setActiveSection] = useState("all"); // "all", "appointments", "treatments", "payments", "history" (admin)
+  const [activeSection, setActiveSection] = useState("all"); // "all", "appointments", "treatments", "payments", "prescriptions", "history" (admin)
   const [editingPayments, setEditingPayments] = useState<{[key: string]: string}>({});
   const [isDeleteTreatmentDialogOpen, setIsDeleteTreatmentDialogOpen] = useState(false);
   const [treatmentToDelete, setTreatmentToDelete] = useState<string | null>(null);
@@ -413,6 +417,13 @@ export default function PatientProfile() {
           >
             جميع المدفوعات
           </Button>
+          <Button
+            variant={activeSection === "prescriptions" ? "default" : "outline"}
+            onClick={() => setActiveSection("prescriptions")}
+            size="sm"
+          >
+            الوصفات
+          </Button>
           {isSuperAdmin && (
             <Button
               variant={activeSection === "history" ? "default" : "outline"}
@@ -615,6 +626,13 @@ export default function PatientProfile() {
                 </form>
               </DialogContent>
             </Dialog>
+
+            {canPrescribe && (
+              <Button className="w-full" variant="outline" onClick={() => setIsPrescriptionOpen(true)}>
+                <FileText className="ml-2 h-4 w-4" />
+                وصفة طبية
+              </Button>
+            )}
 
             <Dialog open={isTreatmentPlanDialogOpen} onOpenChange={setIsTreatmentPlanDialogOpen}>
               <DialogTrigger asChild>
@@ -1552,7 +1570,19 @@ export default function PatientProfile() {
         </Card>
       )}
 
+      {(activeSection === "all" || activeSection === "prescriptions") && patient && (
+        <PatientPrescriptions patient={{ id: patient.id, full_name: patient.full_name }} />
+      )}
+
       {isSuperAdmin && activeSection === "history" && patientId && <PatientActivityHistory patientId={patientId} />}
+
+      {patient && (
+        <PrescriptionDialog
+          open={isPrescriptionOpen}
+          onOpenChange={setIsPrescriptionOpen}
+          patient={{ id: patient.id, full_name: patient.full_name }}
+        />
+      )}
     </div>
   );
 }

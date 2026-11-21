@@ -252,7 +252,7 @@ Where the import runs: check over SSH whether the host's PHP has `pdo_pgsql` (`p
 | **B. Parity + specialties** | All current features over the API, **specialties + money snapshots** in the schema, **revenue reports per doctor/specialty**, import + verify commands, remove العلاجات الجارية page | The money model must be right **at import time**, so specialties belong here, not later |
 | **C. Cutover** | Staging trial → go-live → 30-day safety window | Live on Laravel with no new risk |
 | **D. Activity log rebuild** ✅ 2026-11-21 | Readable events (appointments, treatments, payments, plans, patients, doctors, users, price list, specialties, role permissions), filters, "money and deletions" view, patient سجل التغييرات (admin) | Small, quick win after go-live |
-| **E. Prescriptions** | Medicines catalog, prescriptions, templates, print | Independent module |
+| **E. Prescriptions** ✅ 2026-11-22 | Medicines catalog (الأدوية), prescriptions with sequential numbers, per-doctor templates, A4 print page with clinic + doctor header, print settings (logo, name, address, footer) | Independent module |
 | **F. Patient files & timeline** | Uploads, viewer, السجل الطبي timeline | Needs storage/backup proven first |
 | **G. Finance v2** | Doctor attendance (check-in/out, hours), per-doctor percentage rules, fixed charges split by work hours, monthly settlement + month closing, doctor payouts. Attendance capture can start earlier (in B) so hours exist when settlement goes live | Needs a few weeks of clean specialty data. Can move before E/F if settlement is more urgent |
 | **H. Children's doctor** | Seed طب الأطفال catalog (معاينة وفحص…), create the doctor's login, own books if wanted | Possible any time after go-live; it is configuration, not new code |

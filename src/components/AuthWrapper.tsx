@@ -123,7 +123,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   return (
     <AuthContext.Provider value={{ user, loading, signOut }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className="fixed bottom-4 right-4 z-50 print:hidden">
         <Card className="bg-green-50 border-green-200">
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-green-700">
