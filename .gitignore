@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Deploy targets (hosts, paths)
+deploy/targets/*.env
+!deploy/targets/example.env

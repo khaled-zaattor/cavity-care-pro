@@ -1,11 +1,8 @@
 <?php
 
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\RateLimiter;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -15,12 +12,6 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: '',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
-        then: function () {
-            RateLimiter::for('login', fn (Request $request) => [
-                Limit::perMinute(5)->by(mb_strtolower((string) $request->input('email')).'|'.$request->ip()),
-                Limit::perMinute(20)->by($request->ip()),
-            ]);
-        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Sanctum SPA cookie authentication for requests from the React app.

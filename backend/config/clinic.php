@@ -24,6 +24,11 @@ return [
     // written into notes use the clinic's local time.
     'timezone' => env('CLINIC_TIMEZONE', 'Asia/Damascus'),
 
+    // php artisan clinic:backup (scheduled daily)
+    'mysqldump_path' => env('MYSQLDUMP_PATH', 'mysqldump'),
+    'mysql_path' => env('MYSQL_PATH', 'mysql'),
+    'backup_keep_days' => (int) env('BACKUP_KEEP_DAYS', 14),
+
     'permissions' => [
         'patients' => ['view' => $all, 'create' => $all, 'update' => $all, 'delete' => [$S]],
         'doctors' => ['view' => $all, 'create' => [$S], 'update' => [$S], 'delete' => [$S]],
