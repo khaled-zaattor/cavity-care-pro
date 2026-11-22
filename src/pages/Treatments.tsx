@@ -47,7 +47,7 @@ export default function Treatments() {
       const doctors = await doctorsApi.list();
       return doctors
         .filter((d) => d.has_own_books)
-        .map((d) => ({ id: d.id, full_name: d.full_name }))
+        .map((d) => ({ id: d.id, full_name: d.full_name, primary_specialty_id: d.primary_specialty_id }))
         .sort((a, b) => a.full_name.localeCompare(b.full_name, "ar"));
     },
   });
@@ -58,7 +58,13 @@ export default function Treatments() {
     queryKey: ["specialties"],
     queryFn: () => specialtiesApi.list(),
   });
-  const defaultSpecialtyId = (specialties?.find((s) => s.is_dental) ?? specialties?.[0])?.id ?? "";
+  // In an independent doctor's catalog, new treatments default to that doctor's primary specialty
+  // (e.g. طب الأطفال); otherwise to dentistry.
+  const ownerPrimarySpecialty = independentDoctors?.find((d) => d.id === ownerDoctorId)?.primary_specialty_id;
+  const defaultSpecialtyId =
+    (ownerPrimarySpecialty && specialties?.some((s) => s.id === ownerPrimarySpecialty) ? ownerPrimarySpecialty : null) ??
+    (specialties?.find((s) => s.is_dental) ?? specialties?.[0])?.id ??
+    "";
 
   const exportToExcel = () => {
     if (!treatments || treatments.length === 0) return;

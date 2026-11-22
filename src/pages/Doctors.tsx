@@ -172,6 +172,7 @@ export default function Doctors() {
     mutationFn: (f: DoctorForm) => doctorsApi.create(toPayload(f)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["doctors"] });
+      queryClient.invalidateQueries({ queryKey: ["independent-doctors"] });
       setIsAddDialogOpen(false);
       toast({ title: "نجح", description: "تم إضافة الدكتور بنجاح" });
     },
@@ -182,6 +183,7 @@ export default function Doctors() {
     mutationFn: (f: DoctorForm) => doctorsApi.update(f.id!, toPayload(f)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["doctors"] });
+      queryClient.invalidateQueries({ queryKey: ["independent-doctors"] });
       setIsEditDialogOpen(false);
       setEditingDoctor(null);
       toast({ title: "نجح", description: "تم تحديث بيانات الدكتور بنجاح" });
@@ -193,6 +195,7 @@ export default function Doctors() {
     mutationFn: (doctorId: string) => doctorsApi.remove(doctorId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["doctors"] });
+      queryClient.invalidateQueries({ queryKey: ["independent-doctors"] });
       toast({ title: "نجح", description: "تم حذف الدكتور بنجاح" });
     },
     onError: (e) => toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" }),
@@ -280,6 +283,59 @@ export default function Doctors() {
     </>
   );
 
+  // Login, separate books and prescription header: super_admin only, in both the add and edit dialogs.
+  const adminFields = (form: DoctorForm, setForm: (f: DoctorForm) => void, prefix: string) =>
+    isSuperAdmin && (
+      <>
+      <div>
+        <Label>حساب الدخول المرتبط</Label>
+        <Select
+          value={form.user_id ?? NO_USER}
+          onValueChange={(v) => setForm({ ...form, user_id: v === NO_USER ? null : v })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_USER}>بدون حساب</SelectItem>
+            {doctorUsers?.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.full_name || u.email} {u.full_name && u.email ? `(${u.email})` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground mt-1">المستخدمون الذين لديهم دور "طبيب" فقط</p>
+      </div>
+      <div className="flex items-center justify-between rounded-md border p-3">
+        <div>
+          <Label htmlFor={`${prefix}has_own_books`}>حسابات مستقلة</Label>
+          <p className="text-xs text-muted-foreground">
+            علاجات خاصة وحسابات مالية منفصلة (مثل طبيب الأطفال). يشارك المرضى وغرفة الانتظار.
+          </p>
+        </div>
+        <Switch
+          id={`${prefix}has_own_books`}
+          checked={form.has_own_books}
+          onCheckedChange={(checked) => setForm({ ...form, has_own_books: checked })}
+        />
+      </div>
+      <div>
+        <Label htmlFor={`${prefix}print_header`}>ترويسة الوصفة</Label>
+        <Textarea
+          id={`${prefix}print_header`}
+          rows={3}
+          maxLength={2000}
+          value={form.print_header}
+          onChange={(e) => setForm({ ...form, print_header: e.target.value })}
+        />
+        <p className="text-xs text-muted-foreground mt-1">
+          سطر أو أكثر يظهر تحت اسم الطبيب في الوصفة المطبوعة (الشهادات، الاختصاص، رقم الترخيص...)
+        </p>
+      </div>
+    </>
+    );
+
   return (
     <div className="space-y-4 lg:space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -292,12 +348,13 @@ export default function Doctors() {
                 إضافة دكتور
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>إضافة دكتور جديد</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 {basicFields(newDoctor, setNewDoctor, "")}
+                {adminFields(newDoctor, setNewDoctor, "")}
                 <Button type="submit" disabled={createDoctorMutation.isPending}>
                   {createDoctorMutation.isPending ? "جاري الإضافة..." : "إضافة دكتور"}
                 </Button>
@@ -440,56 +497,7 @@ export default function Doctors() {
           {editingDoctor && (
             <form onSubmit={handleEditSubmit} className="space-y-4">
               {basicFields(editingDoctor, (f) => setEditingDoctor(f), "edit_")}
-              {isSuperAdmin && (
-                <>
-                  <div>
-                    <Label>حساب الدخول المرتبط</Label>
-                    <Select
-                      value={editingDoctor.user_id ?? NO_USER}
-                      onValueChange={(v) => setEditingDoctor({ ...editingDoctor, user_id: v === NO_USER ? null : v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NO_USER}>بدون حساب</SelectItem>
-                        {doctorUsers?.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.full_name || u.email} {u.full_name && u.email ? `(${u.email})` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground mt-1">المستخدمون الذين لديهم دور "طبيب" فقط</p>
-                  </div>
-                  <div className="flex items-center justify-between rounded-md border p-3">
-                    <div>
-                      <Label htmlFor="edit_has_own_books">حسابات مستقلة</Label>
-                      <p className="text-xs text-muted-foreground">
-                        علاجات خاصة وحسابات مالية منفصلة (مثل طبيب الأطفال). يشارك المرضى وغرفة الانتظار.
-                      </p>
-                    </div>
-                    <Switch
-                      id="edit_has_own_books"
-                      checked={editingDoctor.has_own_books}
-                      onCheckedChange={(checked) => setEditingDoctor({ ...editingDoctor, has_own_books: checked })}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="edit_print_header">ترويسة الوصفة</Label>
-                    <Textarea
-                      id="edit_print_header"
-                      rows={3}
-                      maxLength={2000}
-                      value={editingDoctor.print_header}
-                      onChange={(e) => setEditingDoctor({ ...editingDoctor, print_header: e.target.value })}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      سطر أو أكثر يظهر تحت اسم الطبيب في الوصفة المطبوعة (الشهادات، الاختصاص، رقم الترخيص...)
-                    </p>
-                  </div>
-                </>
-              )}
+              {adminFields(editingDoctor, (f) => setEditingDoctor(f), "edit_")}
               <Button type="submit" disabled={updateDoctorMutation.isPending}>
                 {updateDoctorMutation.isPending ? "جاري التحديث..." : "تحديث البيانات"}
               </Button>

@@ -50,6 +50,37 @@ class CatalogApiTest extends TestCase
         $this->actingAs($this->assistant)->postJson('/doctors', ['full_name' => 'x', 'specialty_ids' => [$dental->id]])->assertForbidden();
     }
 
+    /** The whole children's-doctor setup done from the screens, without artisan. */
+    public function test_admin_sets_up_a_childrens_doctor_from_the_screens(): void
+    {
+        $kids = Specialty::where('code', 'pediatrics')->first();
+
+        // 1. لوحة الإدارة: the login
+        $userId = $this->actingAs($this->admin)->postJson('/admin/users', [
+            'email' => 'kids2@clinic.test', 'full_name' => 'د. سمر', 'role' => 'doctor', 'password' => 'Secret-123456',
+        ])->assertCreated()->json('data.id');
+
+        // 2. الأطباء → إضافة دكتور: one dialog, linked login + separate books
+        $doctorId = $this->actingAs($this->admin)->postJson('/doctors', [
+            'full_name' => 'د. سمر', 'specialty_ids' => [$kids->id], 'primary_specialty_id' => $kids->id,
+            'user_id' => $userId, 'has_own_books' => true,
+        ])->assertCreated()->assertJsonPath('data.has_own_books', true)->assertJsonPath('data.user_id', $userId)->json('data.id');
+
+        // 3. العلاجات → كتالوج د. سمر: treatment + priced sub-treatment
+        $treatmentId = $this->actingAs($this->admin)->postJson('/treatments', [
+            'name' => 'معاينة وفحص', 'specialty_id' => $kids->id, 'doctor_id' => $doctorId,
+        ])->assertCreated()->assertJsonPath('data.doctor_id', $doctorId)->json('data.id');
+        $this->actingAs($this->admin)->postJson('/sub-treatments', [
+            'treatment_id' => $treatmentId, 'name' => 'معاينة وفحص', 'estimated_cost_syp' => 50000,
+        ])->assertCreated()->assertJsonPath('data.tooth_association', 'not_related');
+
+        // The doctor sees only their own catalog; the clinic staff don't get it mixed into dentistry.
+        $doctorUser = \App\Models\User::find($userId);
+        $this->actingAs($doctorUser)->getJson('/treatments')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $treatmentId);
+        $this->actingAs($this->assistant)->getJson('/treatments')->assertJsonMissing(['id' => $treatmentId]);
+    }
+
     public function test_catalog_listing_follows_books_rules(): void
     {
         $this->actingAs($this->assistant)->getJson('/treatments')->assertOk()
