@@ -108,6 +108,17 @@ Prepare in advance: production DB + user, `deploy/targets/production.env` (`WEB_
 8. Add the production cron line (same as §2, with `~/apps/cavity/current`).
 9. Tell staff the new system is live: same address, same passwords.
 
+### First days after go-live (admin, in the app)
+
+1. **إدارة النظام → إعدادات الطباعة:** clinic name, address, phone, footer and logo. These appear on prescriptions, receipts and statements.
+2. **الأطباء → تعديل:** each doctor's print header (qualifications, licence).
+3. **المالية → نسب الأطباء:** each doctor's percentage. **المالية → المصاريف الشهرية الثابتة:** rent and other monthly charges, generated on the 1st.
+4. **حضور الأطباء:** start check-in/check-out from day one. The hours split the shared charges at the end of the month.
+5. **Children's doctor** (when ready): create the doctor and their login, then over SSH:
+   `php artisan clinic:setup-pediatrics "<doctor full name>" --price=<SYP> --own-books`
+
+Note: `import:supabase --fresh` empties everything created in the app (prescriptions, uploaded-file records, attendance, charges, settlements, payouts, activity log) but keeps configuration (medicines, prescription templates, print settings, expense categories, percentages, recurring charges). So staging trial data never reaches production.
+
 ## 6. Rollback
 
 - **During cutover (before staff use it):**

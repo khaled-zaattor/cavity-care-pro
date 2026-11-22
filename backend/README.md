@@ -78,8 +78,26 @@ All require login except `POST /auth/login`. Lists respect the role matrix and i
 | Money | `POST /payments`, `PATCH/DELETE /payments/{id}`, `GET /appointments/{id}/payments`, `PATCH/DELETE /treatment-records/{id}`, `POST /treatment-plans`, `DELETE /treatment-plans/{id}` |
 | Waiting room | `GET /waiting-list` (`?active=1`), `POST /waiting-list`, `PATCH /waiting-list/{id}` (`action: enter_exam\|complete` or times), `POST /waiting-list/complete-in-exam`, `POST /waiting-list/clear-completed`, `DELETE /waiting-list/{id}` |
 | Reports | `GET /stats?from&to&books=all\|clinic\|<doctor_id>`, `GET /reports/revenue?from&to&group_by=doctor\|specialty\|doctor_specialty` |
+| Dashboard | `GET /dashboard` (contents by role) |
+| Prescriptions (E) | `/medicines`, `/prescriptions` (+ `/{id}/printed`), `/prescription-templates`, `/clinic-settings` (+ `/logo`) |
+| Patient files (F) | `GET/POST /patients/{id}/files`, `GET /patient-files/{id}/content\|thumbnail`, `PATCH/DELETE /patient-files/{id}`, `GET /patients/{id}/timeline`, `GET /admin/storage` |
+| Attendance (G) | `GET /attendance`, `GET /attendance/today`, `POST /attendance/check-in\|check-out`, admin `POST/PATCH/DELETE /attendance` |
+| Finance (G, admin) | `GET /settlements?period=YYYY-MM`, `POST /settlements/close\|reopen`, `GET /my-settlement` (doctor), `/compensation-rules`, `/expense-categories`, `/expenses?period=`, `/recurring-expenses`, `/payouts` |
+| Receipts | `GET /payments/{id}` (for the printed receipt) |
 
 Behaviour changes vs. Supabase (deliberate fixes): sums are no longer capped at 1000 rows; treatment flows are atomic; tooth matching works for NULL teeth; "mark complete" and deleting a record also clear the unfinished tracker; deleting an appointment re-opens a plan executed in it (bulk delete used to delete the plan); bulk-delete totals are per currency; changing your password checks the current one; public self sign-up is gone (admins create users).
+
+## Artisan commands
+
+| Command | What it does |
+|---|---|
+| `import:supabase [--fresh]` / `import:verify` | Copy Supabase into MySQL / prove counts and every balance match |
+| `clinic:backup` | Daily gzip dump of the database (scheduled 03:00) |
+| `clinic:restore <file>` | Load a dump into the database |
+| `clinic:recurring-expenses [--period=YYYY-MM]` | Monthly charges from the recurring templates (scheduled on the 1st) |
+| `clinic:setup-pediatrics "<doctor>" [--price=] [--own-books]` | Children's doctor: specialty + «معاينة وفحص» catalog |
+
+Settlement rule (decisions 2026-11-20): revenue = payments collected in the month; all charges first (doctor's direct charges + clinic-wide charges split by work hours + specialty charges split among that specialty's doctors), then the doctor's own percentage. Independent doctors don't carry clinic-wide charges (`FINANCE_INDEPENDENT_SHARE_EXPENSES`). Old money (older than `FINANCE_LOCK_AFTER_DAYS`, default 7) is editable by the admin only; a closed month by nobody.
 
 ## Routing convention
 

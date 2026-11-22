@@ -13,6 +13,7 @@ use App\Services\AppointmentDeletion;
 use App\Services\TreatmentFlowService;
 use App\Support\Activity;
 use App\Support\DoctorBooks;
+use App\Support\MoneyLock;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -83,7 +84,7 @@ class AppointmentController extends Controller
         $this->authorize('store', $appointment);
         $appointment->save();
 
-        return response()->json(['data' => $appointment->load(self::WITH)], 201);
+        return response()->json(['data' => $this->withConflicts($appointment->load(self::WITH))], 201);
     }
 
     public function update(Request $request, Appointment $appointment): JsonResponse
@@ -94,12 +95,16 @@ class AppointmentController extends Controller
         $this->authorize('store', $appointment);
         $appointment->save();
 
-        return response()->json(['data' => $appointment->load(self::WITH)]);
+        return response()->json(['data' => $this->withConflicts($appointment->load(self::WITH))]);
     }
 
     public function destroy(Appointment $appointment, AppointmentDeletion $deletion): JsonResponse
     {
         $this->authorize('delete', $appointment);
+        // Its payments go with it: same lock as editing them (plan §3.6).
+        foreach ($appointment->payments as $payment) {
+            MoneyLock::assertEditable($payment->paid_at, request()->user(), 'appointment');
+        }
         $deletion->delete([$appointment->id]);
 
         return response()->json(null, 204);
@@ -332,6 +337,26 @@ class AppointmentController extends Controller
     }
 
     /** @return string[] appointments in range this user may see AND delete */
+    /**
+     * Plan §3.4: warn (not block) when the doctor already has a scheduled
+     * appointment within config('clinic.slot_minutes') of this one.
+     */
+    private function withConflicts(Appointment $appointment): Appointment
+    {
+        $slot = (int) config('clinic.slot_minutes');
+        $conflicts = $appointment->status === 'Scheduled' ? Appointment::query()
+            ->with('patient:id,full_name')
+            ->where('doctor_id', $appointment->doctor_id)
+            ->where('status', 'Scheduled')
+            ->whereKeyNot($appointment->id)
+            ->whereBetween('scheduled_at', [$appointment->scheduled_at->copy()->subMinutes($slot - 1), $appointment->scheduled_at->copy()->addMinutes($slot - 1)])
+            ->get(['id', 'patient_id', 'scheduled_at'])
+            ->map(fn ($c) => ['id' => $c->id, 'patient_name' => $c->patient?->full_name, 'scheduled_at' => $c->scheduled_at])
+            : collect();
+
+        return $appointment->setAttribute('conflicts', $conflicts->values());
+    }
+
     private function deletableIds(Request $request, Carbon $from, Carbon $to): array
     {
         $this->authorize('viewAny', Appointment::class);
@@ -339,6 +364,18 @@ class AppointmentController extends Controller
 
         return Appointment::query()->visibleTo($user)->whereBetween('scheduled_at', [$from, $to])->get()
             ->filter(fn (Appointment $a) => $user->can('delete', $a))
+            // skip appointments whose payments are locked (closed month / too old for this user)
+            ->filter(function (Appointment $a) use ($user) {
+                try {
+                    foreach ($a->payments as $p) {
+                        MoneyLock::assertEditable($p->paid_at, $user);
+                    }
+
+                    return true;
+                } catch (ValidationException) {
+                    return false;
+                }
+            })
             ->pluck('id')->all();
     }
 }

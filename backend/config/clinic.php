@@ -24,6 +24,9 @@ return [
     // written into notes use the clinic's local time.
     'timezone' => env('CLINIC_TIMEZONE', 'Asia/Damascus'),
 
+    // A doctor's appointments closer than this get a double-booking warning.
+    'slot_minutes' => (int) env('APPOINTMENT_SLOT_MINUTES', 15),
+
     // php artisan clinic:backup (scheduled daily)
     'mysqldump_path' => env('MYSQLDUMP_PATH', 'mysqldump'),
     'mysql_path' => env('MYSQL_PATH', 'mysql'),
@@ -35,6 +38,16 @@ return [
 
     // Admin dashboard warns when the storage disk is this full.
     'disk_warning_percent' => (int) env('DISK_WARNING_PERCENT', 80),
+
+    // Phase G: monthly doctor settlement
+    'finance' => [
+        // A month's loss (charges > revenue) reduces the next month's net.
+        'carry_losses' => (bool) env('FINANCE_CARRY_LOSSES', false),
+        // Independent doctors keep separate books: by default they do not carry rent etc.
+        'independent_share_clinic_expenses' => (bool) env('FINANCE_INDEPENDENT_SHARE_EXPENSES', false),
+        // Edits to payments/treatment costs older than this need super_admin (plan §3.6).
+        'lock_after_days' => (int) env('FINANCE_LOCK_AFTER_DAYS', 7),
+    ],
 
     'permissions' => [
         'patients' => ['view' => $all, 'create' => $all, 'update' => $all, 'delete' => [$S]],

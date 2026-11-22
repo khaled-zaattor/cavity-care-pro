@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
+use App\Models\ClinicSetting;
 use App\Models\Patient;
 use App\Models\Payment;
 use App\Models\Treatment;
 use App\Models\TreatmentPlan;
 use App\Models\TreatmentRecord;
 use App\Models\UnfinishedSubTreatment;
+use App\Models\User;
 use App\Services\TreatmentFlowService;
+use App\Support\MoneyLock;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +41,27 @@ class MoneyController extends Controller
         return response()->json(['data' => $payment], 201);
     }
 
+    /** GET /payments/{id} — one payment with what a printed receipt needs. */
+    public function showPayment(Payment $payment): JsonResponse
+    {
+        $this->authorize('view', $payment);
+        $payment->load([
+            'patient' => fn ($q) => $q->withTrashed()->select('id', 'full_name', 'phone_number'),
+            'doctor' => fn ($q) => $q->withTrashed()->select('id', 'full_name'),
+            'appointment:id,scheduled_at,specialty_id', 'appointment.specialty:id,name_ar',
+        ]);
+        $s = ClinicSetting::all_values();
+
+        return response()->json([
+            'data' => $payment,
+            'received_by' => User::whereKey($payment->received_by)->value('full_name'),
+            'clinic' => [
+                'name' => $s['clinic_name'], 'name_en' => $s['clinic_name_en'], 'address' => $s['clinic_address'],
+                'phone' => $s['clinic_phone'], 'footer' => $s['prescription_footer'], 'has_logo' => ! empty($s['logo_path']),
+            ],
+        ]);
+    }
+
     /** GET /appointments/{id}/payments */
     public function appointmentPayments(Request $request, Appointment $appointment): JsonResponse
     {
@@ -51,6 +75,7 @@ class MoneyController extends Controller
     public function updatePayment(Request $request, Payment $payment): JsonResponse
     {
         $this->authorize('update', $payment);
+        MoneyLock::assertEditable($payment->paid_at, $request->user());
         $payment->update($request->validate(['amount' => ['required', 'numeric', 'gt:0']]));
 
         return response()->json(['data' => $payment]);
@@ -60,6 +85,7 @@ class MoneyController extends Controller
     public function destroyPayment(Payment $payment): JsonResponse
     {
         $this->authorize('delete', $payment);
+        MoneyLock::assertEditable($payment->paid_at, request()->user());
         $payment->delete();
 
         return response()->json(null, 204);
@@ -71,6 +97,10 @@ class MoneyController extends Controller
     public function updateRecord(Request $request, TreatmentRecord $record): JsonResponse
     {
         $this->authorize('update', $record);
+        // Costs are money; completing a record or editing notes is not locked.
+        if ($request->hasAny(['actual_cost_syp', 'actual_cost_usd'])) {
+            MoneyLock::assertEditable($record->performed_at, $request->user(), 'actual_cost_syp');
+        }
         $data = $request->validate([
             'actual_cost_syp' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'actual_cost_usd' => ['sometimes', 'nullable', 'numeric', 'min:0'],
@@ -98,6 +128,7 @@ class MoneyController extends Controller
     public function destroyRecord(TreatmentRecord $record): JsonResponse
     {
         $this->authorize('delete', $record);
+        MoneyLock::assertEditable($record->performed_at, request()->user(), 'record');
 
         DB::transaction(function () use ($record) {
             $record->delete();

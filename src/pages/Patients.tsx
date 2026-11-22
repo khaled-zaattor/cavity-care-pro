@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Search, Plus, Calendar, FileText, Edit, Trash2, FileDown, Upload, ChevronLeft, ChevronRight } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { patientsApi, apiErrorMessage, type PatientInput } from "@/api/clinic";
+import { DuplicatePatientsCleanup } from "@/components/DuplicatePatientsCleanup";
+import { useUserRole } from "@/hooks/useUserRole";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from 'xlsx';
@@ -75,6 +77,7 @@ export default function Patients() {
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [filterMode, setFilterMode] = useState<"all" | "duplicates" | "no_appointments">("all");
+  const { isSuperAdmin } = useUserRole();
   const itemsPerPage = 20;
   const [newPatient, setNewPatient] = useState({
     full_name: "",
@@ -450,6 +453,7 @@ export default function Patients() {
                 بدون مواعيد
               </Button>
             </div>
+            {isSuperAdmin && <DuplicatePatientsCleanup />}
             <div className="relative">
               <input
                 type="file"

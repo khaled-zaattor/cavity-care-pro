@@ -48,6 +48,12 @@ class SupabaseImporter
 
     /** Target tables, children first (used for --fresh). */
     private const TARGET_TABLES = [
+        // Data created in Laravel itself (staging trial data must not survive the
+        // final --fresh run). Configuration is kept: medicines, prescription
+        // templates, clinic print settings, expense categories, percentage rules,
+        // recurring charges. Uploaded files on disk are not deleted.
+        'activity_logs', 'prescription_items', 'prescriptions', 'patient_files',
+        'doctor_attendances', 'settlements', 'doctor_payouts', 'expenses',
         'waiting_list', 'unfinished_sub_treatments', 'appointment_treatment_steps',
         'treatment_plans', 'payments', 'treatment_records', 'appointments', 'sub_treatment_steps',
         'sub_treatments', 'treatments', 'patients', 'doctor_specialty', 'doctors', 'role_permissions',

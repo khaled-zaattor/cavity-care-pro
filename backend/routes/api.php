@@ -2,9 +2,12 @@
 
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AppointmentController;
+use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClinicSettingController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DoctorController;
+use App\Http\Controllers\Api\FinanceController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\MoneyController;
 use App\Http\Controllers\Api\PatientController;
@@ -59,6 +62,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Patients
     Route::get('/patients/search', [PatientController::class, 'search']);
+    Route::get('/patients/duplicates/cleanup', [PatientController::class, 'duplicatesPreview']);
+    Route::post('/patients/duplicates/cleanup', [PatientController::class, 'duplicatesCleanup']);
     Route::post('/patients/import', [PatientController::class, 'import']);
     Route::apiResource('patients', PatientController::class);
     Route::get('/patients/{patient}/appointments', [PatientHistoryController::class, 'appointments']);
@@ -128,6 +133,40 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/patient-files/{file}', [PatientFileController::class, 'update']);
     Route::delete('/patient-files/{file}', [PatientFileController::class, 'destroy']);
     Route::get('/admin/storage', [ReportController::class, 'storage']);
+
+    // Phase G: attendance and finance
+    Route::get('/attendance', [AttendanceController::class, 'index']);
+    Route::get('/attendance/today', [AttendanceController::class, 'today']);
+    Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
+    Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
+    Route::post('/attendance', [AttendanceController::class, 'store']);
+    Route::patch('/attendance/{attendance}', [AttendanceController::class, 'update']);
+    Route::delete('/attendance/{attendance}', [AttendanceController::class, 'destroy']);
+    Route::get('/settlements', [FinanceController::class, 'settlements']);
+    Route::post('/settlements/close', [FinanceController::class, 'close']);
+    Route::post('/settlements/reopen', [FinanceController::class, 'reopen']);
+    Route::get('/my-settlement', [FinanceController::class, 'mySettlement']);
+    Route::get('/compensation-rules', [FinanceController::class, 'rules']);
+    Route::post('/compensation-rules', [FinanceController::class, 'storeRule']);
+    Route::delete('/compensation-rules/{rule}', [FinanceController::class, 'destroyRule']);
+    Route::get('/expense-categories', [FinanceController::class, 'categories']);
+    Route::post('/expense-categories', [FinanceController::class, 'storeCategory']);
+    Route::patch('/expense-categories/{category}', [FinanceController::class, 'updateCategory']);
+    Route::get('/expenses', [FinanceController::class, 'expenses']);
+    Route::post('/expenses', [FinanceController::class, 'storeExpense']);
+    Route::patch('/expenses/{expense}', [FinanceController::class, 'updateExpense']);
+    Route::delete('/expenses/{expense}', [FinanceController::class, 'destroyExpense']);
+    Route::get('/recurring-expenses', [FinanceController::class, 'recurring']);
+    Route::post('/recurring-expenses', [FinanceController::class, 'storeRecurring']);
+    Route::patch('/recurring-expenses/{recurring}', [FinanceController::class, 'updateRecurring']);
+    Route::delete('/recurring-expenses/{recurring}', [FinanceController::class, 'destroyRecurring']);
+    Route::get('/payouts', [FinanceController::class, 'payouts']);
+    Route::post('/payouts', [FinanceController::class, 'storePayout']);
+    Route::delete('/payouts/{payout}', [FinanceController::class, 'destroyPayout']);
+
+    // Dashboard and payment receipts
+    Route::get('/dashboard', DashboardController::class);
+    Route::get('/payments/{payment}', [MoneyController::class, 'showPayment']);
 
     Route::post('/auth/password', [AuthController::class, 'changePassword']);
 });

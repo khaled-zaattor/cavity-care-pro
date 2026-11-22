@@ -154,6 +154,8 @@ export interface Appointment {
   specialty?: { id: string; name_ar: string; is_dental: boolean; color: string | null } | null;
   payments?: Payment[];
   treatment_records?: TreatmentRecord[];
+  /** create/update only: the doctor's other scheduled appointments within 15 min (warning, not an error) */
+  conflicts?: { id: string; patient_name: string | null; scheduled_at: string }[];
 }
 
 export interface TreatmentPlan {
@@ -312,6 +314,10 @@ export const patientsApi = {
   /** every patient (Excel export) */
   all: (params: { search?: string } = {}) => api.get<Paginated<Patient>>("/patients", { ...params, per_page: 10000 }).then((r) => r.data),
   search: (q: string) => d(api.get<Data<PatientLite[]>>("/patients/search", { q })),
+  /** admin: duplicate patients with no appointments (and nothing attached) that the cleanup would delete */
+  duplicatesPreview: () =>
+    api.get<{ count: number; data: { id: string; full_name: string; phone_number: string | null; created_at: string }[] }>("/patients/duplicates/cleanup"),
+  duplicatesCleanup: (ids: string[]) => api.post<{ deleted: number }>("/patients/duplicates/cleanup", { ids }),
   get: (id: string) => d(api.get<Data<Patient>>(`/patients/${id}`)),
   create: (body: PatientInput) => d(api.post<Data<Patient>>("/patients", body)),
   update: (id: string, body: PatientInput) => d(api.patch<Data<Patient>>(`/patients/${id}`, body)),
@@ -667,6 +673,194 @@ export const timelineApi = {
 
 export const storageApi = {
   usage: () => d(api.get<Data<StorageUsage>>("/admin/storage")),
+};
+
+// ---------------------------------------------------------------------------
+// Phase G: attendance, finance, settlement; dashboard; payment receipts
+// ---------------------------------------------------------------------------
+
+export type Allocation = "clinic_wide" | "specialty" | "doctor";
+
+export interface AttendanceRow {
+  id: string;
+  doctor_id: string;
+  date: string;
+  check_in: string;
+  check_out: string | null;
+  minutes: number | null;
+  source: "live" | "manual";
+  notes: string | null;
+  doctor?: { id: string; full_name: string } | null;
+}
+
+export interface AttendanceToday {
+  doctor_id: string;
+  doctor_name: string;
+  checked_in: boolean;
+  open_since: string | null;
+  today_minutes: number;
+  spans: AttendanceRow[];
+}
+
+export interface CompensationRule {
+  id: string;
+  doctor_id: string;
+  specialty_id: string | null;
+  percent: number;
+  effective_from: string;
+  effective_to: string | null;
+  notes: string | null;
+  doctor?: { id: string; full_name: string } | null;
+  specialty?: { id: string; name_ar: string } | null;
+}
+
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+  default_allocation: Allocation;
+  is_active: boolean;
+}
+
+export interface Expense {
+  id: string;
+  category_id: string;
+  amount: number;
+  currency: Currency;
+  spent_at: string;
+  allocation: Allocation;
+  doctor_id: string | null;
+  specialty_id: string | null;
+  recurring_expense_id: string | null;
+  notes: string | null;
+  category?: { id: string; name: string } | null;
+  doctor?: { id: string; full_name: string } | null;
+  specialty?: { id: string; name_ar: string } | null;
+}
+
+export interface RecurringExpense extends Omit<Expense, "spent_at" | "recurring_expense_id" | "doctor" | "specialty"> {
+  is_active: boolean;
+  last_generated_period: string | null;
+}
+
+export interface SettlementRow {
+  doctor_id: string;
+  doctor_name: string;
+  has_own_books: boolean;
+  currency: Currency;
+  hours: number;
+  revenue: number;
+  direct_expenses: number;
+  allocated_expenses: number;
+  carried_loss: number;
+  net: number;
+  percent: number;
+  doctor_share: number;
+  clinic_share: number;
+  paid: number;
+  owed: number;
+  details?: {
+    per_specialty?: { specialty_id: string | null; revenue: number; percent: number }[];
+    allocation?: { type: "clinic_wide" | "specialty"; specialty_id?: string; total: number; ratio: number }[];
+  };
+}
+
+export interface SettlementPeriod {
+  period: string;
+  closed: boolean;
+  closed_at: string | null;
+  allocation_basis: "hours" | "revenue";
+  total_hours: number;
+  rows: SettlementRow[];
+  warnings: string[];
+}
+
+export interface DoctorPayout {
+  id: string;
+  doctor_id: string;
+  period: string | null;
+  amount: number;
+  currency: Currency;
+  paid_at: string;
+  notes: string | null;
+  doctor?: { id: string; full_name: string } | null;
+}
+
+export interface DashboardData {
+  role: string;
+  today: {
+    appointments: number;
+    scheduled: number;
+    completed: number;
+    next: { id: string; scheduled_at: string; patient: { id: string; full_name: string } | null; doctor: { id: string; full_name: string } | null }[];
+    waiting: number;
+    in_examination: number;
+    doctors_in: number;
+  };
+  doctor?: { unfinished_treatments: number; month: Stats };
+  admin?: {
+    month: Stats;
+    by_specialty: RevenueRow[];
+    by_doctor: RevenueRow[];
+    top_debtors: { patient_id: string; full_name: string; balance: number }[];
+  };
+}
+
+export const attendanceApi = {
+  list: (params: { doctor_id?: string; from?: string; to?: string } = {}) =>
+    api.get<{ data: AttendanceRow[]; hours_by_doctor: Record<string, number>; from: string; to: string }>("/attendance", params),
+  today: () => api.get<{ data: AttendanceToday[]; date: string }>("/attendance/today"),
+  checkIn: (doctor_id?: string) => d(api.post<Data<AttendanceRow>>("/attendance/check-in", { doctor_id })),
+  checkOut: (doctor_id?: string) => d(api.post<Data<AttendanceRow>>("/attendance/check-out", { doctor_id })),
+  /** admin: add a forgotten day (times "HH:mm", clinic local) */
+  add: (body: { doctor_id: string; date: string; check_in: string; check_out: string; notes?: string | null }) =>
+    d(api.post<Data<AttendanceRow>>("/attendance", body)),
+  update: (id: string, body: { check_in?: string; check_out?: string; notes?: string | null }) =>
+    d(api.patch<Data<AttendanceRow>>(`/attendance/${id}`, body)),
+  remove: (id: string) => api.delete(`/attendance/${id}`),
+};
+
+export const financeApi = {
+  settlements: (period: string) => d(api.get<Data<SettlementPeriod>>("/settlements", { period })),
+  mySettlement: (period: string) => d(api.get<Data<SettlementPeriod>>("/my-settlement", { period })),
+  close: (period: string) => d(api.post<Data<SettlementPeriod>>("/settlements/close", { period })),
+  reopen: (period: string) => d(api.post<Data<SettlementPeriod>>("/settlements/reopen", { period })),
+
+  rules: () => d(api.get<Data<CompensationRule[]>>("/compensation-rules")),
+  addRule: (body: { doctor_id: string; specialty_id?: string | null; percent: number; effective_from: string; notes?: string | null }) =>
+    d(api.post<Data<CompensationRule>>("/compensation-rules", body)),
+  removeRule: (id: string) => api.delete(`/compensation-rules/${id}`),
+
+  categories: () => d(api.get<Data<ExpenseCategory[]>>("/expense-categories")),
+  addCategory: (body: { name: string; default_allocation?: Allocation }) => d(api.post<Data<ExpenseCategory>>("/expense-categories", body)),
+  updateCategory: (id: string, body: Partial<ExpenseCategory>) => d(api.patch<Data<ExpenseCategory>>(`/expense-categories/${id}`, body)),
+
+  expenses: (period: string) => api.get<{ data: Expense[]; totals: Partial<Record<Currency, number>> }>("/expenses", { period }),
+  addExpense: (body: { category_id: string; amount: number; currency: Currency; spent_at?: string; allocation: Allocation; doctor_id?: string | null; specialty_id?: string | null; notes?: string | null }) =>
+    d(api.post<Data<Expense>>("/expenses", body)),
+  updateExpense: (id: string, body: Partial<Pick<Expense, "category_id" | "amount" | "currency" | "spent_at" | "allocation" | "doctor_id" | "specialty_id" | "notes">>) =>
+    d(api.patch<Data<Expense>>(`/expenses/${id}`, body)),
+  removeExpense: (id: string) => api.delete(`/expenses/${id}`),
+
+  recurring: () => d(api.get<Data<RecurringExpense[]>>("/recurring-expenses")),
+  addRecurring: (body: { category_id: string; amount: number; currency: Currency; allocation: Allocation; doctor_id?: string | null; specialty_id?: string | null; notes?: string | null }) =>
+    d(api.post<Data<RecurringExpense>>("/recurring-expenses", body)),
+  updateRecurring: (id: string, body: Partial<RecurringExpense>) => d(api.patch<Data<RecurringExpense>>(`/recurring-expenses/${id}`, body)),
+  removeRecurring: (id: string) => api.delete(`/recurring-expenses/${id}`),
+
+  payouts: (params: { period?: string; doctor_id?: string } = {}) => d(api.get<Data<DoctorPayout[]>>("/payouts", params)),
+  addPayout: (body: { doctor_id: string; period?: string | null; amount: number; currency: Currency; paid_at: string; notes?: string | null }) =>
+    d(api.post<Data<DoctorPayout>>("/payouts", body)),
+  removePayout: (id: string) => api.delete(`/payouts/${id}`),
+};
+
+export const dashboardApi = {
+  get: () => d(api.get<Data<DashboardData>>("/dashboard")),
+};
+
+export const receiptsApi = {
+  payment: (id: string) =>
+    api.get<{ data: Payment & { patient?: { id: string; full_name: string; phone_number: string | null } | null; doctor?: { id: string; full_name: string } | null; appointment?: { id: string; scheduled_at: string; specialty?: { id: string; name_ar: string } | null } | null }; received_by: string | null; clinic: ClinicHeader }>(
+      `/payments/${id}`),
 };
 
 // ---------------------------------------------------------------------------

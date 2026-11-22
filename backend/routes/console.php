@@ -13,3 +13,9 @@ Schedule::command('clinic:backup')
     ->timezone(config('clinic.timezone'))
     ->withoutOverlapping()
     ->onOneServer();
+
+// Monthly charges (rent…) from the recurring templates, on the 1st.
+Schedule::command('clinic:recurring-expenses')
+    ->monthlyOn(1, '00:30')
+    ->timezone(config('clinic.timezone'))
+    ->withoutOverlapping();

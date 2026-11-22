@@ -250,12 +250,12 @@ Where the import runs: check over SSH whether the host's PHP has `pdo_pgsql` (`p
 |---|---|---|
 | **A. Foundation** ✅ 2026-11-20 | Laravel project in `backend/`, auth (Sanctum + existing passwords), roles/policies incl. independent doctor, `src/api` layer in React. 19 PHPUnit tests passing (SQLite) | Everything depends on it |
 | **B. Parity + specialties** | All current features over the API, **specialties + money snapshots** in the schema, **revenue reports per doctor/specialty**, import + verify commands, remove العلاجات الجارية page | The money model must be right **at import time**, so specialties belong here, not later |
-| **C. Cutover** | Staging trial → go-live → 30-day safety window | Live on Laravel with no new risk |
+| **C. Cutover** 🛠 kit ready | Staging trial → go-live → 30-day safety window (deploy kit + runbook in `deploy/`; waiting for host details) | Live on Laravel with no new risk |
 | **D. Activity log rebuild** ✅ 2026-11-21 | Readable events (appointments, treatments, payments, plans, patients, doctors, users, price list, specialties, role permissions), filters, "money and deletions" view, patient سجل التغييرات (admin) | Small, quick win after go-live |
 | **E. Prescriptions** ✅ 2026-11-22 | Medicines catalog (الأدوية), prescriptions with sequential numbers, per-doctor templates, A4 print page with clinic + doctor header, print settings (logo, name, address, footer) | Independent module |
-| **F. Patient files & timeline** ✅ 2026-11-23 | Private uploads (x-rays, lab tests, reports, photos, PDF) with thumbnails, viewer with zoom/rotate, before/after compare, السجل الطبي timeline with specialty filter, storage usage card | Needs storage/backup proven first |
-| **G. Finance v2** | Doctor attendance (check-in/out, hours), per-doctor percentage rules, fixed charges split by work hours, monthly settlement + month closing, doctor payouts. Attendance capture can start earlier (in B) so hours exist when settlement goes live | Needs a few weeks of clean specialty data. Can move before E/F if settlement is more urgent |
-| **H. Children's doctor** | Seed طب الأطفال catalog (معاينة وفحص…), create the doctor's login, own books if wanted | Possible any time after go-live; it is configuration, not new code |
+| **F. Patient files & timeline** ✅ 2026-11-22 | Private uploads (x-rays, lab tests, reports, photos, PDF) with thumbnails, viewer with zoom/rotate, before/after compare, السجل الطبي timeline with specialty filter, storage usage card | Needs storage/backup proven first |
+| **G. Finance v2** ✅ 2026-11-22 | Doctor attendance (check-in/out, hours), per-doctor (and per-specialty) percentage rules, charges split by work hours, monthly settlement with month closing, doctor payouts, recurring monthly charges | Needs a few weeks of clean specialty data. Can move before E/F if settlement is more urgent |
+| **H. Children's doctor** ✅ tooling 2026-11-22 | `php artisan clinic:setup-pediatrics "<doctor>" --price=… --own-books` gives the doctor طب الأطفال and the «معاينة وفحص» catalog; creating the login stays a 1-minute admin task | Possible any time after go-live; it is configuration, not new code |
 
 New features are **not** built on Supabase first, so nothing has to be written twice.
 

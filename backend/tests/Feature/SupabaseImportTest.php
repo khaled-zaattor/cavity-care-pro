@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Import\SupabaseImporter;
 use App\Import\SupabaseVerifier;
+use App\Models\DoctorAttendance;
+use App\Models\Medicine;
 use App\Models\Payment;
+use App\Models\Prescription;
 use App\Models\TreatmentRecord;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
@@ -345,6 +348,22 @@ class SupabaseImportTest extends TestCase
         foreach (['treatment_plans', 'appointment_treatment_steps', 'unfinished_sub_treatments', 'waiting_list', 'role_permissions', 'sub_treatment_steps'] as $table) {
             $this->assertSame(1, DB::table($table)->count(), $table);
         }
+    }
+
+    public function test_fresh_import_wipes_laravel_only_data_but_keeps_configuration(): void
+    {
+        (new SupabaseImporter)->run();
+        $medicine = Medicine::create(['trade_name' => 'Amoxil']);
+        Prescription::create([
+            'number' => 1, 'patient_id' => self::PATIENT, 'doctor_id' => self::DENTIST, 'issued_at' => now(),
+        ]);
+        DoctorAttendance::create(['doctor_id' => self::DENTIST, 'date' => '2026-01-04', 'check_in' => now()]);
+
+        (new SupabaseImporter)->run(fresh: true);
+
+        $this->assertSame(0, Prescription::withTrashed()->count());
+        $this->assertSame(0, DoctorAttendance::count());
+        $this->assertNotNull(Medicine::find($medicine->id)); // configuration survives
     }
 
     public function test_activity_logs_are_not_imported(): void

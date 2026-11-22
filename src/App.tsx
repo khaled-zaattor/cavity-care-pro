@@ -21,7 +21,11 @@ import MyFinances from "./pages/MyFinances";
 import Specialties from "./pages/Specialties";
 import Reports from "./pages/Reports";
 import Medicines from "./pages/Medicines";
+import Finance from "./pages/Finance";
+import Attendance from "./pages/Attendance";
 import PrintPrescription from "./pages/PrintPrescription";
+import PrintReceipt from "./pages/PrintReceipt";
+import PrintStatement from "./pages/PrintStatement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -59,8 +63,12 @@ const App = () => (
             <Route path="/specialties" element={<Layout><Specialties /></Layout>} />
             <Route path="/reports" element={<Layout><Reports /></Layout>} />
             <Route path="/medicines" element={<Layout><Medicines /></Layout>} />
+            <Route path="/finance" element={<Layout><Finance /></Layout>} />
+            <Route path="/attendance" element={<Layout><Attendance /></Layout>} />
             {/* A4 print page: no sidebar/header */}
             <Route path="/print/prescription/:prescriptionId" element={<PrintPrescription />} />
+            <Route path="/print/receipt/:paymentId" element={<PrintReceipt />} />
+            <Route path="/print/statement/:patientId" element={<PrintStatement />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH -ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { GlobalPatientSearch, GlobalPatientSearchButton } from "@/components/GlobalPatientSearch";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 interface LayoutProps {
@@ -27,6 +28,8 @@ export const Layout = ({ children }: LayoutProps) => {
     { path: "/waiting-list-management", label: "إدارة لائحة الانتظار", icon: Users },
     { path: "/admin", label: "إدارة النظام", icon: FileText },
     { path: "/my-finances", label: "حساباتي", icon: FileText },
+    { path: "/finance", label: "المالية", icon: FileText },
+    { path: "/attendance", label: "حضور الأطباء", icon: Users },
   ];
 
   const currentPage = navItems.find(item => item.path === location.pathname)?.label || "لوحة التحكم";
@@ -47,8 +50,12 @@ export const Layout = ({ children }: LayoutProps) => {
                 {currentPage}
               </h2>
             </div>
-            <ThemeToggle />
+            <div className="flex items-center gap-2 shrink-0">
+              <GlobalPatientSearchButton />
+              <ThemeToggle />
+            </div>
           </header>
+          <GlobalPatientSearch />
           
           {/* Main Content Area */}
           <main className="flex-1 p-2 sm:p-4 lg:p-6 overflow-auto">

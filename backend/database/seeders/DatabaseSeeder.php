@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\ExpenseCategory;
 use App\Models\Specialty;
 use Illuminate\Database\Seeder;
 
@@ -19,5 +20,15 @@ class DatabaseSeeder extends Seeder
         Specialty::updateOrCreate(['code' => 'pediatrics'], [
             'name_ar' => 'طب الأطفال', 'name_en' => 'Pediatrics', 'is_dental' => false, 'color' => '#22c55e', 'sort_order' => 2,
         ]);
+
+        // Expense categories (Phase G); created once, then editable in المالية.
+        if (ExpenseCategory::query()->doesntExist()) {
+            foreach ([
+                ['إيجار', 'clinic_wide'], ['كهرباء ومياه', 'clinic_wide'], ['رواتب الموظفين', 'clinic_wide'],
+                ['مواد وأدوات', 'clinic_wide'], ['مخبر', 'doctor'], ['صيانة', 'clinic_wide'], ['أخرى', 'clinic_wide'],
+            ] as [$name, $allocation]) {
+                ExpenseCategory::create(['name' => $name, 'default_allocation' => $allocation]);
+            }
+        }
     }
 }

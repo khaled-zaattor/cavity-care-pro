@@ -153,6 +153,109 @@ class PatientController extends Controller
         return response()->json(['inserted' => $inserted, 'skipped' => count($skipped), 'skipped_names' => $skipped]);
     }
 
+    /** GET /patients/duplicates/cleanup — what the button would delete (preview). */
+    public function duplicatesPreview(Request $request): JsonResponse
+    {
+        $this->authorize('delete', new Patient);
+        $rows = $this->duplicateCandidates();
+
+        return response()->json([
+            'count' => $rows->count(),
+            'data' => $rows->map(fn ($p) => $p->only(['id', 'full_name', 'phone_number', 'created_at']))->values(),
+        ]);
+    }
+
+    /**
+     * POST /patients/duplicates/cleanup {ids?: [...]}
+     * Soft-deletes duplicate patients that have no appointments and nothing
+     * else attached; at least one copy of every name is always kept.
+     * With ids: only those (still eligible) candidates — what the user confirmed.
+     */
+    public function duplicatesCleanup(Request $request): JsonResponse
+    {
+        $this->authorize('delete', new Patient);
+        $ids = $request->validate(['ids' => ['sometimes', 'array'], 'ids.*' => ['uuid']])['ids'] ?? null;
+
+        $rows = $this->duplicateCandidates();
+        if ($ids !== null) {
+            $rows = $rows->whereIn('id', $ids);
+        }
+
+        DB::transaction(function () use ($rows) {
+            Activity::muted(fn () => Patient::whereIn('id', $rows->pluck('id'))->get()->each->delete());
+        });
+
+        if ($rows->isNotEmpty()) {
+            Activity::log('deleted', 'patient', null,
+                'حذف '.$rows->count().' مريضاً مكرراً بدون مواعيد: '.$rows->pluck('full_name')->unique()->take(15)->implode('، ')
+                .($rows->pluck('full_name')->unique()->count() > 15 ? '…' : ''));
+        }
+
+        return response()->json(['deleted' => $rows->count()]);
+    }
+
+    /**
+     * Duplicate = same name ignoring case/extra spaces. A copy is deletable
+     * when it has no appointment, prescription, file, plan, unfinished
+     * treatment or waiting-room entry. Every name keeps at least one copy
+     * (the oldest, when none of them has data).
+     */
+    private function duplicateCandidates()
+    {
+        $key = 'LOWER(TRIM(full_name))';
+        $dupNames = Patient::query()->selectRaw("$key k")->groupByRaw($key)->havingRaw('COUNT(*) > 1')->pluck('k');
+        if ($dupNames->isEmpty()) {
+            return collect();
+        }
+
+        $patients = Patient::query()
+            ->whereIn(DB::raw($key), $dupNames)
+            ->withExists([
+                'appointments as has_appointments',
+            ])
+            ->orderBy('created_at')->orderBy('id')
+            ->get(['id', 'full_name', 'phone_number', 'created_at']);
+
+        $ids = $patients->pluck('id');
+        $linked = collect(['prescriptions', 'patient_files', 'treatment_plans', 'unfinished_sub_treatments', 'waiting_list', 'treatment_records', 'payments'])
+            ->flatMap(fn ($t) => DB::table($t)->whereIn('patient_id', $ids)->distinct()->pluck('patient_id'))
+            ->flip();
+
+        // Same name but a different phone number = probably a different person: keep.
+        // A copy is a duplicate when another copy has the same phone, or when it has no phone.
+        $phone = fn ($p) => preg_replace('/\D+/', '', (string) $p->phone_number);
+        $isEmpty = fn ($p) => ! $p->has_appointments && ! $linked->has($p->id);
+
+        $out = collect();
+        foreach ($patients->groupBy(fn ($p) => mb_strtolower(trim($p->full_name))) as $group) {
+            $withPhone = $group->filter(fn ($p) => $phone($p) !== '');
+            $noPhone = $group->filter(fn ($p) => $phone($p) === '');
+            $kept = collect();
+
+            // per phone number: delete empty copies, keep one copy if all are empty
+            foreach ($withPhone->groupBy($phone) as $samePhone) {
+                $empty = $samePhone->filter($isEmpty);
+                if ($empty->count() === $samePhone->count()) {
+                    $kept->push($empty->first());
+                    $empty = $empty->slice(1);
+                } else {
+                    $kept = $kept->merge($samePhone->reject($isEmpty));
+                }
+                $out = $out->merge($empty);
+            }
+
+            // copies without a phone: duplicates of any kept copy of the same name
+            $emptyNoPhone = $noPhone->filter($isEmpty);
+            $keptNoPhone = $noPhone->reject($isEmpty);
+            if ($kept->isEmpty() && $keptNoPhone->isEmpty()) {
+                $emptyNoPhone = $emptyNoPhone->slice(1); // keep one copy of the name
+            }
+            $out = $out->merge($emptyNoPhone);
+        }
+
+        return $out->values();
+    }
+
     private function validated(Request $request, bool $partial = false): array
     {
         $data = $request->validate([
