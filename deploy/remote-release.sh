@@ -51,7 +51,12 @@ ln -sfn "$SHARED/.env" "$REL/.env"
 
 cd "$REL"
 log "composer install"
-$COMPOSER install --no-dev --optimize-autoloader --no-interaction --no-progress --quiet
+# not --quiet: a failure must show its reason (it used to exit silently)
+if ! $COMPOSER install --no-dev --optimize-autoloader --no-interaction --no-progress > "$SHARED/storage/logs/composer-$RELEASE.log" 2>&1; then
+  tail -30 "$SHARED/storage/logs/composer-$RELEASE.log"
+  log "composer install FAILED (full log: shared/storage/logs/composer-$RELEASE.log)"
+  exit 1
+fi
 
 if ! grep -q '^APP_KEY=base64:' "$SHARED/.env"; then
   log "generating APP_KEY"
