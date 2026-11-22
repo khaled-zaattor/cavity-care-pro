@@ -9,13 +9,14 @@
 #   $WEB_DIR/                      React build (the site's document root)
 #   $WEB_DIR/api -> $APP_DIR/current/public
 #
-# Env: APP_DIR, WEB_DIR, RELEASE, PHP (default php), COMPOSER (default composer),
+# Env: APP_DIR, WEB_DIR, RELEASE, PHP (default php), COMPOSER_BIN (default composer),
 #      MAINTENANCE=1 to put the API in maintenance mode while migrating.
 # =====================================================================
 set -euo pipefail
 : "${APP_DIR:?}" "${WEB_DIR:?}" "${RELEASE:?}"
 PHP="${PHP:-php}"
-COMPOSER="${COMPOSER:-composer}"
+# NOT "COMPOSER": Composer reads that variable as the name of composer.json
+COMPOSER_BIN="${COMPOSER_BIN:-composer}"
 MAINTENANCE="${MAINTENANCE:-0}"
 # Set when the API has its own subdomain: that domain's document root becomes a link to current/public.
 BACKEND_WEB_DIR="${BACKEND_WEB_DIR:-}"
@@ -52,7 +53,7 @@ ln -sfn "$SHARED/.env" "$REL/.env"
 cd "$REL"
 log "composer install"
 # not --quiet: a failure must show its reason (it used to exit silently)
-if ! $COMPOSER install --no-dev --optimize-autoloader --no-interaction --no-progress > "$SHARED/storage/logs/composer-$RELEASE.log" 2>&1; then
+if ! $COMPOSER_BIN install --no-dev --optimize-autoloader --no-interaction --no-progress > "$SHARED/storage/logs/composer-$RELEASE.log" 2>&1; then
   tail -30 "$SHARED/storage/logs/composer-$RELEASE.log"
   log "composer install FAILED (full log: shared/storage/logs/composer-$RELEASE.log)"
   exit 1

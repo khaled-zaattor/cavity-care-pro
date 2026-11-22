@@ -72,7 +72,7 @@ scp -P "$SSH_PORT" -o BatchMode=yes -q \
   "$SSH_USER@$SSH_HOST:$APP_DIR/incoming/"
 
 echo "==> Releasing $RELEASE"
-"${SSH[@]}" "APP_DIR='$APP_DIR' WEB_DIR='$WEB_DIR' BACKEND_WEB_DIR='$BACKEND_WEB_DIR' RELEASE='$RELEASE' PHP='$REMOTE_PHP' COMPOSER='$REMOTE_COMPOSER' MAINTENANCE='$MAINTENANCE' bash '$APP_DIR/incoming/remote-release.sh'"
+"${SSH[@]}" "APP_DIR='$APP_DIR' WEB_DIR='$WEB_DIR' BACKEND_WEB_DIR='$BACKEND_WEB_DIR' RELEASE='$RELEASE' PHP='$REMOTE_PHP' COMPOSER_BIN='$REMOTE_COMPOSER' MAINTENANCE='$MAINTENANCE' bash '$APP_DIR/incoming/remote-release.sh'"
 
 echo "==> Smoke test"
 "$ROOT/deploy/smoke.sh" "$SITE_URL" "${API_URL:-}"
