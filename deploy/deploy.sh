@@ -31,6 +31,9 @@ SSH_PORT="${SSH_PORT:-22}"
 REMOTE_PHP="${REMOTE_PHP:-php}"
 REMOTE_COMPOSER="${REMOTE_COMPOSER:-composer}"
 MAINTENANCE="${MAINTENANCE:-0}"
+# Separate API subdomain (optional): API_URL=https://care-back.example.com, BACKEND_WEB_DIR=<its public_html>
+API_URL="${API_URL:-}"
+BACKEND_WEB_DIR="${BACKEND_WEB_DIR:-}"
 
 if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
   echo "Uncommitted changes. Commit first — the release is built from git HEAD."
@@ -48,7 +51,11 @@ if [ "$TARGET" = "production" ]; then
 fi
 
 echo "==> Building frontend ($REV)"
-(cd "$ROOT" && npm run build --silent)
+if [ -n "$API_URL" ]; then
+  (cd "$ROOT" && VITE_API_URL="$API_URL" npm run build --silent)
+else
+  (cd "$ROOT" && npm run build --silent)
+fi
 tar -czf "$WORK/frontend.tgz" -C "$ROOT/dist" .
 
 echo "==> Packing backend from git HEAD"
@@ -65,9 +72,9 @@ scp -P "$SSH_PORT" -o BatchMode=yes -q \
   "$SSH_USER@$SSH_HOST:$APP_DIR/incoming/"
 
 echo "==> Releasing $RELEASE"
-"${SSH[@]}" "APP_DIR='$APP_DIR' WEB_DIR='$WEB_DIR' RELEASE='$RELEASE' PHP='$REMOTE_PHP' COMPOSER='$REMOTE_COMPOSER' MAINTENANCE='$MAINTENANCE' bash '$APP_DIR/incoming/remote-release.sh'"
+"${SSH[@]}" "APP_DIR='$APP_DIR' WEB_DIR='$WEB_DIR' BACKEND_WEB_DIR='$BACKEND_WEB_DIR' RELEASE='$RELEASE' PHP='$REMOTE_PHP' COMPOSER='$REMOTE_COMPOSER' MAINTENANCE='$MAINTENANCE' bash '$APP_DIR/incoming/remote-release.sh'"
 
 echo "==> Smoke test"
-"$ROOT/deploy/smoke.sh" "$SITE_URL"
+"$ROOT/deploy/smoke.sh" "$SITE_URL" "${API_URL:-}"
 
 echo "Done: $RELEASE is live on $SITE_URL"

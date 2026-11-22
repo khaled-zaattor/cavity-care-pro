@@ -17,6 +17,8 @@ set -euo pipefail
 PHP="${PHP:-php}"
 COMPOSER="${COMPOSER:-composer}"
 MAINTENANCE="${MAINTENANCE:-0}"
+# Set when the API has its own subdomain: that domain's document root becomes a link to current/public.
+BACKEND_WEB_DIR="${BACKEND_WEB_DIR:-}"
 IN="$APP_DIR/incoming"
 REL="$APP_DIR/releases/$RELEASE"
 SHARED="$APP_DIR/shared"
@@ -77,7 +79,17 @@ ln -sfn "$REL" "$APP_DIR/current.tmp"
 mv -Tf "$APP_DIR/current.tmp" "$APP_DIR/current"
 log "backend now on $RELEASE"
 
-if [ ! -L "$WEB_DIR/api" ]; then
+if [ -n "$BACKEND_WEB_DIR" ]; then
+  # Separate API subdomain: its public_html -> current/public
+  if [ ! -L "$BACKEND_WEB_DIR" ]; then
+    if [ -e "$BACKEND_WEB_DIR" ]; then
+      mv "$BACKEND_WEB_DIR" "$BACKEND_WEB_DIR.orig-$(date +%Y%m%d%H%M%S)"
+      log "moved the original $BACKEND_WEB_DIR aside"
+    fi
+    ln -s "$APP_DIR/current/public" "$BACKEND_WEB_DIR"
+    log "linked $BACKEND_WEB_DIR -> current/public"
+  fi
+elif [ ! -L "$WEB_DIR/api" ]; then
   if [ -e "$WEB_DIR/api" ]; then
     log "ERROR: $WEB_DIR/api exists and is not a symlink — move it away and redeploy."
     exit 1
