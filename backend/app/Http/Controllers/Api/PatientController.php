@@ -33,14 +33,13 @@ class PatientController extends Controller
                 ->where('full_name', 'like', '%'.$s.'%')
                 ->orWhere('phone_number', 'like', '%'.$s.'%')))
             ->when($request->query('filter') === 'no_appointments', fn (Builder $q) => $q->whereDoesntHave('appointments'))
-            // Self-join via EXISTS instead of GROUP BY/HAVING: MySQL's
-            // only_full_group_by rejects grouping on an expression.
-            ->when($request->query('filter') === 'duplicates', fn (Builder $q) => $q->whereExists(
-                fn ($s) => $s->select(DB::raw(1))
-                    ->from('patients as dup')
-                    ->whereNull('dup.deleted_at')
-                    ->whereColumn('dup.id', '<>', 'patients.id')
-                    ->whereRaw('LOWER(TRIM(dup.full_name)) = LOWER(TRIM(patients.full_name))'),
+            // Names that occur more than once, grouped ONCE in a derived table.
+            // (A correlated self-join compared every patient with every other one:
+            // 12.5 s for 5,000 patients on the host, run twice by paginate -> 500/503.)
+            ->when($request->query('filter') === 'duplicates', fn (Builder $q) => $q->whereRaw(
+                'LOWER(TRIM(patients.full_name)) IN (SELECT k FROM ('
+                .'SELECT LOWER(TRIM(full_name)) AS k FROM patients WHERE deleted_at IS NULL '
+                .'GROUP BY LOWER(TRIM(full_name)) HAVING COUNT(*) > 1) AS dup_names)'
             ))
             ->orderBy('full_name');
 

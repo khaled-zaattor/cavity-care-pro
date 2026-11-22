@@ -63,4 +63,19 @@ class DuplicatePatientsCleanupTest extends TestCase
         // nothing left to clean
         $this->actingAs($this->admin)->getJson('/patients/duplicates/cleanup')->assertJson(['count' => 0]);
     }
+    public function test_duplicates_filter_lists_every_copy_of_a_repeated_name(): void
+    {
+        $this->buildClinic();
+        Patient::create(['full_name' => 'سارة أحمد']);
+        Patient::create(['full_name' => ' سارة أحمد ']);
+        $gone = Patient::create(['full_name' => 'Ali']);
+        Patient::create(['full_name' => 'ali']);
+        Patient::create(['full_name' => 'بدون تكرار']);
+        $gone->delete(); // a deleted copy no longer makes "ali" a duplicate
+
+        $names = collect($this->actingAs($this->admin)->getJson('/patients?filter=duplicates&per_page=50')
+            ->assertOk()->json('data'))->pluck('full_name')->map(fn ($n) => trim($n))->sort()->values()->all();
+
+        $this->assertSame(['سارة أحمد', 'سارة أحمد'], $names);
+    }
 }
