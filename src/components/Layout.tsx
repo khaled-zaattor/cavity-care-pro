@@ -32,7 +32,14 @@ export const Layout = ({ children }: LayoutProps) => {
     { path: "/attendance", label: "حضور الأطباء", icon: Users },
   ];
 
-  const currentPage = navItems.find(item => item.path === location.pathname)?.label || "لوحة التحكم";
+  const subPages: [string, string][] = [
+    ["/patient-profile/", "ملف المريض"],
+    ["/doctor-profile/", "ملف الطبيب"],
+  ];
+  const currentPage =
+    navItems.find(item => item.path === location.pathname)?.label ||
+    subPages.find(([prefix]) => location.pathname.startsWith(prefix))?.[1] ||
+    "لوحة التحكم";
 
   return (
     <SidebarProvider defaultOpen={!isMobile}>

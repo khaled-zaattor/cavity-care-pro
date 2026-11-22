@@ -740,6 +740,8 @@ export interface Expense {
 export interface RecurringExpense extends Omit<Expense, "spent_at" | "recurring_expense_id" | "doctor" | "specialty"> {
   is_active: boolean;
   last_generated_period: string | null;
+  /** already added as an expense for the month that was asked for */
+  posted?: boolean;
 }
 
 export interface SettlementRow {
@@ -841,7 +843,9 @@ export const financeApi = {
     d(api.patch<Data<Expense>>(`/expenses/${id}`, body)),
   removeExpense: (id: string) => api.delete(`/expenses/${id}`),
 
-  recurring: () => d(api.get<Data<RecurringExpense[]>>("/recurring-expenses")),
+  recurring: (period: string) => d(api.get<Data<RecurringExpense[]>>("/recurring-expenses", { period })),
+  /** posts the month's fixed expenses (rent…); safe to press twice */
+  generateRecurring: (period: string) => api.post<{ created: number; period: string }>("/recurring-expenses/generate", { period }),
   addRecurring: (body: { category_id: string; amount: number; currency: Currency; allocation: Allocation; doctor_id?: string | null; specialty_id?: string | null; notes?: string | null }) =>
     d(api.post<Data<RecurringExpense>>("/recurring-expenses", body)),
   updateRecurring: (id: string, body: Partial<RecurringExpense>) => d(api.patch<Data<RecurringExpense>>(`/recurring-expenses/${id}`, body)),

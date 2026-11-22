@@ -1,10 +1,13 @@
-import { Users, Calendar, FileText, UserCheck, Settings, FileSpreadsheet, ListChecks, MonitorPlay, Wallet, Layers, BarChart3, Pill, Clock, Landmark, LayoutDashboard, type LucideIcon } from "lucide-react";
+import { Users, Calendar, FileText, UserCheck, Settings, FileSpreadsheet, ListChecks, MonitorPlay, Wallet, Layers, BarChart3, Pill, Clock, Landmark, LayoutDashboard, LogOut, UserCircle, type LucideIcon } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useAuth } from "@/components/AuthWrapper";
+import { Button } from "@/components/ui/button";
 
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -79,7 +82,9 @@ const independentDoctorPaths = [
 ];
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
+  const { user, signOut } = useAuth();
+  const userName = user ? user.full_name || user.email.replace(/@gmail\.com$/, "") : "";
   const location = useLocation();
   const currentPath = location.pathname;
   const { userRole, isIndependentDoctor } = useUserRole();
@@ -131,6 +136,7 @@ export function AppSidebar() {
                           end
                           className={getNavCls(active)}
                           title={isCollapsed ? item.label : undefined}
+                          onClick={() => isMobile && setOpenMobile(false)}
                         >
                           <Icon className="h-5 w-5 shrink-0" />
                           {!isCollapsed && <span className="mr-2">{item.label}</span>}
@@ -144,6 +150,20 @@ export function AppSidebar() {
           </SidebarGroup>
         ))}
       </SidebarContent>
+
+      {/* user + logout: part of the sidebar, so it never covers menu items or page content */}
+      {user && (
+        <SidebarFooter className="border-t">
+          <div className={`flex items-center gap-2 ${isCollapsed ? "flex-col" : ""}`}>
+            <UserCircle className="h-5 w-5 shrink-0 text-primary" />
+            {!isCollapsed && <span className="flex-1 truncate text-sm font-medium" title={userName}>{userName}</span>}
+            <Button variant="ghost" size="sm" onClick={signOut} title="تسجيل الخروج" className="h-8 shrink-0 px-2 text-xs">
+              <LogOut className="h-4 w-4 rtl:rotate-180" />
+              {!isCollapsed && <span className="mr-1">خروج</span>}
+            </Button>
+          </div>
+        </SidebarFooter>
+      )}
     </Sidebar>
   );
 }

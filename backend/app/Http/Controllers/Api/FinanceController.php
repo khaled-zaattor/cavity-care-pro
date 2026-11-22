@@ -9,6 +9,7 @@ use App\Models\DoctorPayout;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\RecurringExpense;
+use App\Services\RecurringExpenseService;
 use App\Services\SettlementService;
 use App\Support\Activity;
 use App\Support\DoctorBooks;
@@ -213,11 +214,33 @@ class FinanceController extends Controller
 
     // ---- recurring expenses ----------------------------------------------------
 
-    public function recurring(Request $request): JsonResponse
+    /** GET /recurring-expenses?period=YYYY-MM — each row says whether it is posted for that month. */
+    public function recurring(Request $request, RecurringExpenseService $service): JsonResponse
     {
         $this->admin($request);
+        $period = $request->validate(['period' => ['nullable', 'date_format:Y-m']])['period']
+            ?? now(config('clinic.timezone'))->format('Y-m');
+        $posted = $service->postedIds($period);
+        $rows = RecurringExpense::with('category:id,name')->orderByDesc('is_active')->get()
+            ->each(fn (RecurringExpense $r) => $r->setAttribute('posted', $posted->contains($r->id)));
 
-        return response()->json(['data' => RecurringExpense::with('category:id,name')->orderByDesc('is_active')->get()]);
+        return response()->json(['data' => $rows, 'period' => $period]);
+    }
+
+    /** POST /recurring-expenses/generate {period} — the monthly button (replaces the cron job). */
+    public function generateRecurring(Request $request, RecurringExpenseService $service, SettlementService $s): JsonResponse
+    {
+        $this->admin($request);
+        $period = $request->validate(['period' => self::PERIOD])['period'];
+        if ($s->isClosed($period)) {
+            throw ValidationException::withMessages(['period' => ['شهر '.$period.' مغلق: أعد فتحه من التسوية الشهرية أولاً']]);
+        }
+        $created = $service->generate($period, $request->user()->id);
+        if ($created) {
+            Activity::log('created', 'settings', null, 'أضاف '.$created.' من المصاريف الشهرية الثابتة لشهر '.$period, ['is_money' => true]);
+        }
+
+        return response()->json(['created' => $created, 'period' => $period]);
     }
 
     public function storeRecurring(Request $request): JsonResponse

@@ -44,7 +44,10 @@ deploy/deploy.sh staging
   Then run the command again. The `APP_KEY` is generated automatically.
 - **Every later run:** builds, uploads, runs `composer install`, migrations and caches, switches to the new release, publishes the frontend and runs the smoke test.
 
-**Cron** (cPanel → *Cron Jobs*, every minute): this runs the daily backup.
+**No cron job is needed.** The host backs up the database every day, and the admin
+adds the monthly fixed expenses (rent…) with the button in **المالية** (a reminder shows
+there until they are added). If a host without its own backups is used later, this
+optional cron line runs `clinic:backup` nightly and the monthly expenses on the 1st:
 
 ```
 * * * * * cd /home/<user>/apps/cavity-staging/current && php artisan schedule:run >> /dev/null 2>&1
@@ -105,7 +108,7 @@ Prepare in advance: production DB + user, `deploy/targets/production.env` (`WEB_
 5. `php artisan import:verify` must print ✔. **If it doesn't, stop and roll back (§6).**
 6. `deploy/deploy.sh production`, then confirm the smoke test passes.
 7. Log in as admin and open a patient with payments. Record a test payment and delete it.
-8. Add the production cron line (same as §2, with `~/apps/cavity/current`).
+8. In المالية, press «إضافتها الآن» if the monthly fixed expenses reminder shows.
 9. Tell staff the new system is live: same address, same passwords.
 
 ### First days after go-live (admin, in the app)

@@ -229,4 +229,26 @@ class SettlementTest extends TestCase
         $this->assertSame(1, Expense::where('spent_at', '2026-12-01')->count());
         $this->assertEquals(500_000, Expense::where('spent_at', '2026-12-01')->value('amount'));
     }
+    public function test_admin_posts_monthly_expenses_with_the_button(): void
+    {
+        $r = RecurringExpense::create(['category_id' => $this->rent->id, 'amount' => 500_000, 'currency' => 'SYP', 'allocation' => 'clinic_wide', 'is_active' => true]);
+        RecurringExpense::create(['category_id' => $this->rent->id, 'amount' => 1, 'currency' => 'SYP', 'allocation' => 'clinic_wide', 'is_active' => false]);
+
+        $this->actingAs($this->receptionist)->postJson('/recurring-expenses/generate', ['period' => '2026-11'])->assertForbidden();
+
+        $this->actingAs($this->admin)->getJson('/recurring-expenses?period=2026-11')->assertOk()
+            ->assertJsonPath('data.0.posted', false);
+        $this->actingAs($this->admin)->postJson('/recurring-expenses/generate', ['period' => '2026-11'])
+            ->assertOk()->assertJsonPath('created', 1);
+        $this->actingAs($this->admin)->postJson('/recurring-expenses/generate', ['period' => '2026-11'])
+            ->assertOk()->assertJsonPath('created', 0);
+        $this->actingAs($this->admin)->getJson('/recurring-expenses?period=2026-11')->assertOk()
+            ->assertJsonPath('data.0.posted', true);
+
+        // a forgotten earlier month can still be posted afterwards
+        $this->actingAs($this->admin)->postJson('/recurring-expenses/generate', ['period' => '2026-09'])
+            ->assertOk()->assertJsonPath('created', 1);
+        $this->assertSame('2026-11', $r->fresh()->last_generated_period);
+        $this->assertSame(2, Expense::where('recurring_expense_id', $r->id)->count());
+    }
 }

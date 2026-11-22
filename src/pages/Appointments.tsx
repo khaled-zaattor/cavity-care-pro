@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
@@ -194,20 +194,18 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
 
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle><div className="grid gap-2">
-
+        {/* phone: search + new appointment on one row, tools below; desktop: all on one row */}
+        <CardHeader className="flex flex-col lg:flex-row lg:items-center gap-3 space-y-0 pb-4">
+          <div className="flex items-center gap-2 lg:flex-1 lg:max-w-md">
             <Input
-              id="filter-patient"
-              type="text"
+              id="appointments-search"
+              type="search"
               value={filterPatientName}
               onChange={(e) => setFilterPatientName(e.target.value)}
               placeholder="ابحث عن مريض..."
-              className="text-xs"
+              className="flex-1 min-w-0"
+              aria-label="بحث عن مريض"
             />
-          </div> </CardTitle>
-          <div className="flex justify-between items-center">
-
             <AppointmentFormDialog
               isDialogOpen={isDialogOpen}
               setIsDialogOpen={setIsDialogOpen}

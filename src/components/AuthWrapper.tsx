@@ -123,19 +123,6 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   return (
     <AuthContext.Provider value={{ user, loading, signOut }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-50 print:hidden">
-        <Card className="bg-green-50 border-green-200">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-green-700">
-              <Shield className="h-4 w-4" />
-              <span className="text-sm font-medium">{user.full_name || user.email.replace(/@gmail\.com$/, "")}</span>
-              <Button variant="ghost" size="sm" onClick={signOut} className="h-auto p-1 text-xs">
-                خروج
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </AuthContext.Provider>
   );
 }

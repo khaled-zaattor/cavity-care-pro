@@ -192,6 +192,8 @@ export default function Finance() {
         <h1 className="text-2xl lg:text-3xl font-bold">المالية</h1>
       </div>
 
+      <MonthlyExpensesReminder />
+
       <Tabs defaultValue="settlement" dir="rtl">
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="settlement">التسوية الشهرية</TabsTrigger>
@@ -939,12 +941,58 @@ function CategoriesCard({ categories }: { categories: ExpenseCategory[] }) {
 // c) recurring
 // ---------------------------------------------------------------------------
 
+/** Posts a month's fixed expenses (no cron job on the host: the admin presses the button). */
+function useGenerateRecurring() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (period: string) => financeApi.generateRecurring(period),
+    onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ["recurring-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["settlement"] });
+      toast({
+        title: r.created ? "تمت الإضافة" : "لا شيء جديد",
+        description: r.created ? `أُضيف ${r.created} من المصاريف الثابتة لشهر ${r.period}` : `مصاريف شهر ${r.period} الثابتة مضافة مسبقاً`,
+      });
+    },
+    onError: errorToast,
+  });
+}
+
+/** Shown on every tab while this month's fixed expenses are not added yet. */
+function MonthlyExpensesReminder() {
+  const period = thisMonth();
+  const { data: rows = [] } = useQuery({ queryKey: ["recurring-expenses", period], queryFn: () => financeApi.recurring(period) });
+  const generate = useGenerateRecurring();
+  const pending = rows.filter((r) => r.is_active && !r.posted);
+  if (!pending.length) return null;
+
+  return (
+    <Alert className="border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertDescription className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <span>
+          المصاريف الشهرية الثابتة لشهر {period} لم تُضف بعد ({pending.map((r) => r.category?.name ?? "-").join("، ")}).
+          تسوية الأطباء لا تكون صحيحة قبل إضافتها.
+        </span>
+        <Button size="sm" onClick={() => generate.mutate(period)} disabled={generate.isPending} className="shrink-0">
+          <Plus className="h-4 w-4 ml-1" />
+          إضافتها الآن
+        </Button>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function RecurringTab() {
   const queryClient = useQueryClient();
   const { doctors, specialties, doctorName, specialtyName } = useLookups();
   const [form, setForm] = useState<ExpenseForm | null>(null);
 
-  const { data: rows = [], isLoading } = useQuery({ queryKey: ["recurring-expenses"], queryFn: () => financeApi.recurring() });
+  const [period, setPeriod] = useState(thisMonth());
+  const generate = useGenerateRecurring();
+  const { data: rows = [], isLoading } = useQuery({ queryKey: ["recurring-expenses", period], queryFn: () => financeApi.recurring(period) });
+  const pendingCount = rows.filter((r) => r.is_active && !r.posted).length;
   const { data: categories = [] } = useQuery({ queryKey: ["expense-categories"], queryFn: () => financeApi.categories() });
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["recurring-expenses"] });
@@ -983,13 +1031,20 @@ function RecurringTab() {
       <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 space-y-0">
         <div>
           <CardTitle>المصاريف الشهرية الثابتة</CardTitle>
-          <CardDescription>تُضاف تلقائياً في أول كل شهر (مثل الإيجار).</CardDescription>
+          <CardDescription>مثل الإيجار: اضغط «إضافة مصاريف الشهر» مرة في بداية كل شهر لتسجيلها كمصاريف بتاريخ أول الشهر.</CardDescription>
         </div>
-        <Button onClick={() => setForm(emptyExpense(""))}>
+        <Button variant="outline" onClick={() => setForm(emptyExpense(""))}>
           <Plus className="h-4 w-4 ml-2" />
           إضافة مصروف ثابت
         </Button>
       </CardHeader>
+      <div className="mx-6 mb-4 flex flex-col sm:flex-row sm:items-end gap-3 rounded-lg border bg-muted/40 p-3">
+        <MonthInput id="recurring_period" value={period} onChange={setPeriod} />
+        <Button onClick={() => generate.mutate(period)} disabled={generate.isPending || !pendingCount}>
+          <Plus className="h-4 w-4 ml-2" />
+          {pendingCount ? `إضافة مصاريف شهر ${period} (${pendingCount})` : `مصاريف شهر ${period} مضافة`}
+        </Button>
+      </div>
       <CardContent className="overflow-x-auto">
         {isLoading ? (
           <div className="text-center py-8">جاري التحميل...</div>
@@ -1004,7 +1059,7 @@ function RecurringTab() {
                 <TableHead>التوزيع</TableHead>
                 <TableHead>ملاحظات</TableHead>
                 <TableHead>فعال</TableHead>
-                <TableHead>آخر شهر أُضيف</TableHead>
+                <TableHead>شهر {period}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -1018,7 +1073,9 @@ function RecurringTab() {
                   <TableCell>
                     <Switch checked={r.is_active} onCheckedChange={(v) => toggle.mutate({ id: r.id, is_active: v })} />
                   </TableCell>
-                  <TableCell>{r.last_generated_period ?? "—"}</TableCell>
+                  <TableCell>
+                    {r.posted ? <Badge variant="secondary">مضاف</Badge> : r.is_active ? <Badge variant="outline">لم يُضف</Badge> : "—"}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">
                     <Button
                       variant="ghost"

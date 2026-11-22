@@ -741,7 +741,7 @@ export default function Patients() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 mt-4 pt-4 border-t">
                   <div className="text-sm text-muted-foreground">
                     عرض {startIndex + 1} - {Math.min(startIndex + itemsPerPage, totalPatients)} من {totalPatients} مريض
                   </div>
@@ -753,7 +753,7 @@ export default function Patients() {
                       disabled={currentPage === 1}
                     >
                       <ChevronRight className="h-4 w-4" />
-                      السابق
+                      <span className="hidden sm:inline">السابق</span>
                     </Button>
                     <div className="flex items-center gap-1">
                       {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -786,7 +786,7 @@ export default function Patients() {
                       onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
                     >
-                      التالي
+                      <span className="hidden sm:inline">التالي</span>
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
                   </div>

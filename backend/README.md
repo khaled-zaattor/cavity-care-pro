@@ -116,4 +116,4 @@ Laravel routes have **no `/api` prefix** (`apiPrefix: ''` in `bootstrap/app.php`
 
 `.env` on the server: `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://your-domain/api`, `SANCTUM_STATEFUL_DOMAINS=your-domain`, `SESSION_SECURE_COOKIE=true`, MySQL credentials.
 
-Cron (one entry): `* * * * * cd /home/USER/laravel && php artisan schedule:run >> /dev/null 2>&1`
+Cron is optional: monthly fixed expenses are added with the button in المالية (`POST /recurring-expenses/generate`), and the Hostinger plan backs up the database daily. On a host without backups, add `* * * * * cd /home/USER/laravel && php artisan schedule:run >> /dev/null 2>&1`.

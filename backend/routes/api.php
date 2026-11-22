@@ -158,6 +158,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/expenses/{expense}', [FinanceController::class, 'destroyExpense']);
     Route::get('/recurring-expenses', [FinanceController::class, 'recurring']);
     Route::post('/recurring-expenses', [FinanceController::class, 'storeRecurring']);
+    Route::post('/recurring-expenses/generate', [FinanceController::class, 'generateRecurring']);
     Route::patch('/recurring-expenses/{recurring}', [FinanceController::class, 'updateRecurring']);
     Route::delete('/recurring-expenses/{recurring}', [FinanceController::class, 'destroyRecurring']);
     Route::get('/payouts', [FinanceController::class, 'payouts']);

@@ -149,7 +149,7 @@ export function AppointmentsToolbar({
   };
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2 lg:mr-auto">
       <Button
         variant="outline"
         size="sm"
@@ -171,7 +171,7 @@ export function AppointmentsToolbar({
             {filtersActive && <span className="mr-1 block h-2 w-2 rounded-full bg-destructive" />}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-80 p-4 space-y-4" dir="rtl">
+        <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-4 space-y-4" dir="rtl">
           <div className="grid gap-2">
             <Label htmlFor="filter-start-date">التاريخ من</Label>
             <Input
