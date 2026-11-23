@@ -31,11 +31,6 @@ class DashboardTest extends TestCase
         $this->assertSame('Shared Patient', $admin['top_debtors'][0]['full_name']);
         $this->assertEquals(100000, $admin['top_debtors'][0]['balance']);
 
-        // A deleted patient no longer shows up with a balance.
-        \App\Models\Patient::where('full_name', 'Shared Patient')->first()->delete();
-        $admin = $this->actingAs($this->admin)->getJson('/dashboard')->assertOk()->json('data.admin');
-        $this->assertSame([], $admin['top_debtors']);
-
         $this->actingAs($this->receptionist)->getJson("/payments/{$this->clinicPayment->id}")->assertOk()
             ->assertJsonPath('data.patient.full_name', 'Shared Patient')->assertJsonStructure(['clinic']);
         $this->actingAs($this->receptionist)->getJson("/payments/{$this->kidsPayment->id}")->assertForbidden();

@@ -80,18 +80,17 @@ class DashboardController extends Controller
         return response()->json(['data' => $data]);
     }
 
-    /** Patients with the highest unpaid SYP balance (charges − payments). Deleted patients are left out. */
+    /** Patients with the highest unpaid SYP balance (charges − payments). */
     private function topDebtors(): array
     {
-        $active = Patient::query()->select('id'); // default scope skips soft-deleted patients
-        $charges = TreatmentRecord::query()->whereIn('patient_id', $active)->groupBy('patient_id')
+        $charges = TreatmentRecord::query()->groupBy('patient_id')
             ->selectRaw('patient_id, COALESCE(SUM(actual_cost_syp),0) c')->pluck('c', 'patient_id');
-        $paid = Payment::query()->whereIn('patient_id', $active)->where('currency', 'SYP')->groupBy('patient_id')
+        $paid = Payment::query()->where('currency', 'SYP')->groupBy('patient_id')
             ->selectRaw('patient_id, COALESCE(SUM(amount),0) p')->pluck('p', 'patient_id');
 
         $rows = $charges->map(fn ($c, $pid) => ['patient_id' => $pid, 'balance' => round((float) $c - (float) ($paid[$pid] ?? 0), 2)])
             ->filter(fn ($r) => $r['balance'] > 0)->sortByDesc('balance')->take(10)->values();
-        $names = Patient::whereIn('id', $rows->pluck('patient_id'))->pluck('full_name', 'id');
+        $names = Patient::withTrashed()->whereIn('id', $rows->pluck('patient_id'))->pluck('full_name', 'id');
 
         return $rows->map(fn ($r) => $r + ['full_name' => $names[$r['patient_id']] ?? '—'])->all();
     }
