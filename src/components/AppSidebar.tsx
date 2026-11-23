@@ -103,7 +103,9 @@ export function AppSidebar() {
   const isCollapsed = state === "collapsed";
 
   const getNavCls = (active: boolean) =>
-    active ? "bg-primary text-primary-foreground font-medium" : "hover:bg-accent hover:text-accent-foreground";
+    active
+      ? "bg-white/15 text-white font-semibold shadow-lg shadow-black/10 ring-1 ring-white/20"
+      : "text-white/80 hover:bg-white/10 hover:text-white";
 
   return (
     <Sidebar 
@@ -112,15 +114,15 @@ export function AppSidebar() {
       className="border-l"
     >
       <SidebarContent>
-        <div className="p-4 border-b">
-          <h1 className={`font-bold text-primary transition-all ${isCollapsed ? "text-sm text-center" : "text-xl"}`}>
+        <div className="p-4 border-b border-white/10">
+          <h1 className={`font-bold text-white transition-all ${isCollapsed ? "text-sm text-center" : "text-xl"}`}>
             {isCollapsed ? "ع.أ" : "عيادة الأسنان"}
           </h1>
         </div>
 
         {visibleGroups.map((group) => (
           <SidebarGroup key={group.label}>
-            <SidebarGroupLabel className={isCollapsed ? "sr-only" : ""}>
+            <SidebarGroupLabel className={isCollapsed ? "sr-only" : "text-white/50 font-semibold"}>
               {group.label}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -153,11 +155,11 @@ export function AppSidebar() {
 
       {/* user + logout: part of the sidebar, so it never covers menu items or page content */}
       {user && (
-        <SidebarFooter className="border-t">
+        <SidebarFooter className="border-t border-white/10">
           <div className={`flex items-center gap-2 ${isCollapsed ? "flex-col" : ""}`}>
-            <UserCircle className="h-5 w-5 shrink-0 text-primary" />
+            <UserCircle className="h-5 w-5 shrink-0 text-white/80" />
             {!isCollapsed && <span className="flex-1 truncate text-sm font-medium" title={userName}>{userName}</span>}
-            <Button variant="ghost" size="sm" onClick={signOut} title="تسجيل الخروج" className="h-8 shrink-0 px-2 text-xs">
+            <Button variant="ghost" size="sm" onClick={signOut} title="تسجيل الخروج" className="h-8 shrink-0 px-2 text-xs text-white/80 hover:bg-white/10 hover:text-white">
               <LogOut className="h-4 w-4 rtl:rotate-180" />
               {!isCollapsed && <span className="mr-1">خروج</span>}
             </Button>

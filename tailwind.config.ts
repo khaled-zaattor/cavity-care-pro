@@ -63,6 +63,12 @@ export default {
 					ring: 'hsl(var(--sidebar-ring))'
 				}
 			},
+			boxShadow: {
+				soft: '0 1px 2px hsl(var(--shadow-color) / 0.06), 0 1px 3px hsl(var(--shadow-color) / 0.08)',
+				card: '0 1px 2px hsl(var(--shadow-color) / 0.04), 0 4px 12px -2px hsl(var(--shadow-color) / 0.08), 0 12px 32px -8px hsl(var(--shadow-color) / 0.10)',
+				'card-hover': '0 2px 4px hsl(var(--shadow-color) / 0.05), 0 8px 20px -4px hsl(var(--shadow-color) / 0.12), 0 20px 44px -12px hsl(var(--shadow-color) / 0.16)',
+				float: '0 10px 25px -5px hsl(var(--shadow-color) / 0.18), 0 25px 60px -15px hsl(var(--shadow-color) / 0.30)',
+			},
 			borderRadius: {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',

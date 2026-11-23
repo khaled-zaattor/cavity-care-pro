@@ -1,3 +1,8 @@
+@import "@fontsource/ibm-plex-sans-arabic/400.css";
+@import "@fontsource/ibm-plex-sans-arabic/500.css";
+@import "@fontsource/ibm-plex-sans-arabic/600.css";
+@import "@fontsource/ibm-plex-sans-arabic/700.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -12,8 +17,8 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 98%;
-    --foreground: 210 20% 20%;
+    --background: 200 30% 97%;
+    --foreground: 215 25% 18%;
 
     --card: 0 0% 100%;
     --card-foreground: 210 20% 20%;
@@ -36,8 +41,8 @@ All colors MUST be HSL.
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 210 15% 90%;
-    --input: 210 15% 90%;
+    --border: 210 20% 91%;
+    --input: 210 18% 88%;
     --ring: 187 46% 43%;
     
     --success: 142 76% 36%;
@@ -46,20 +51,23 @@ All colors MUST be HSL.
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 187 36% 35%;
+    /* layered soft shadows (tinted, not grey) */
+    --shadow-color: 200 40% 25%;
+
+    --sidebar-background: 190 45% 24%;
     --sidebar-foreground: 0 0% 100%;
     --sidebar-primary: 187 46% 43%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 187 40% 45%;
+    --sidebar-accent: 187 40% 32%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 187 30% 30%;
     --sidebar-ring: 187 46% 43%;
   }
 
   .dark {
-    --background: 222 28% 12%;
+    --background: 222 30% 10%;
     --foreground: 210 20% 95%;
 
     --card: 222 25% 15%;
@@ -87,7 +95,9 @@ All colors MUST be HSL.
     --input: 222 20% 22%;
     --ring: 187 46% 43%;
     
-    --sidebar-background: 187 30% 20%;
+    --shadow-color: 222 50% 3%;
+
+    --sidebar-background: 190 35% 15%;
     --sidebar-foreground: 0 0% 100%;
     --sidebar-primary: 187 46% 43%;
     --sidebar-primary-foreground: 0 0% 100%;
@@ -104,6 +114,39 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-family: "IBM Plex Sans Arabic", system-ui, "Segoe UI", Tahoma, sans-serif;
+    /* soft colour washes behind the content */
+    background-image:
+      radial-gradient(60rem 30rem at 100% -10%, hsl(var(--primary) / 0.08), transparent 60%),
+      radial-gradient(50rem 30rem at -10% 110%, hsl(var(--accent) / 0.07), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  h1, h2, h3 {
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.2);
+  }
+}
+
+@layer components {
+  /* sidebar: deep teal gradient instead of a flat block */
+  [data-sidebar="sidebar"] {
+    background-image: linear-gradient(180deg, hsl(var(--sidebar-background)) 0%, hsl(195 50% 16%) 100%);
+  }
+  .dark [data-sidebar="sidebar"] {
+    background-image: linear-gradient(180deg, hsl(var(--sidebar-background)) 0%, hsl(205 40% 9%) 100%);
+  }
+}
+/* printed pages (receipts, prescriptions, statements): no shadows or colour washes */
+@media print {
+  body {
+    background-image: none !important;
+  }
+  * {
+    box-shadow: none !important;
   }
 }
