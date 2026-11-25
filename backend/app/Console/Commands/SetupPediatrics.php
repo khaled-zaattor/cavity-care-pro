@@ -49,7 +49,7 @@ class SetupPediatrics extends Command
         $isPrimary = ! $doctor->specialties()->exists();
         $doctor->specialties()->syncWithoutDetaching([$kids->id => ['is_primary' => $isPrimary]]);
 
-        $owner = $doctor->has_own_books ? $doctor->id : null;
+        $owner = null; // catalog is shared per specialty (2026-11-25)
         $treatment = Treatment::firstOrCreate(
             ['name' => 'معاينة وفحص', 'doctor_id' => $owner, 'specialty_id' => $kids->id],
             ['description' => 'كشف طبيب الأطفال']

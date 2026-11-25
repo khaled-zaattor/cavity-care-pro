@@ -31,6 +31,7 @@ export function TreatmentPlanDialog({ patientId, doctors, treatments, showError 
 
   const selectedPlanTreatment = treatments?.find((t) => t.id === treatmentPlan.treatment_id);
   const subTreatments = selectedPlanTreatment?.sub_treatments ?? [];
+  const showSpecialty = new Set(treatments?.map((t) => t.specialty_id)).size > 1;
 
   // Create treatment plan mutation
   const createTreatmentPlanMutation = useMutation({
@@ -75,17 +76,12 @@ export function TreatmentPlanDialog({ patientId, doctors, treatments, showError 
                 <SelectValue placeholder="اختر علاج" />
               </SelectTrigger>
               <SelectContent>
-                {treatments?.map((treatment) => {
-                  // super_admin sees every catalog: label independent doctors' treatments
-                  const owner = treatment.doctor_id
-                    ? doctors?.find((d) => d.id === treatment.doctor_id)
-                    : null;
-                  return (
-                    <SelectItem key={treatment.id} value={treatment.id}>
-                      {treatment.name}{owner ? ` (د. ${owner.full_name})` : ""}
-                    </SelectItem>
-                  );
-                })}
+                {treatments?.map((treatment) => (
+                  // the catalog is split by specialty: label each treatment with it
+                  <SelectItem key={treatment.id} value={treatment.id}>
+                    {treatment.name}{showSpecialty && treatment.specialty ? ` (${treatment.specialty.name_ar})` : ""}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

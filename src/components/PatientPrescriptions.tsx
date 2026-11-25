@@ -37,6 +37,7 @@ export function PatientPrescriptions({ patient }: { patient: { id: string; full_
     mutationFn: (id: string) => prescriptionsApi.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prescriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["medical-summary"] });
       toast({ title: "تم حذف الوصفة" });
     },
     onError: (e) => toast({ title: "خطأ", description: apiErrorMessage(e), variant: "destructive" }),

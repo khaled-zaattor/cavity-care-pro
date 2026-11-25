@@ -2,8 +2,10 @@ import type { Dispatch, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { FileText, MessageCircle, CheckSquare, MoreHorizontal, Pencil, Trash2, ClipboardCheck } from "lucide-react";
-import type { Appointment, Paginated } from "@/api/clinic";
+import { FileText, MessageCircle, CheckSquare, MoreHorizontal, Pencil, Trash2, ClipboardCheck, Pill } from "lucide-react";
+import type { Appointment, Doctor, Paginated } from "@/api/clinic";
+import { useUserRole } from "@/hooks/useUserRole";
+import { isDentalAppointment } from "./utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format } from "date-fns";
 
@@ -21,6 +23,8 @@ interface AppointmentsTableProps {
   setIsRecordDialogOpen: Dispatch<SetStateAction<boolean>>;
   setIsExecutePlanDialogOpen: Dispatch<SetStateAction<boolean>>;
   setIsResumeDialogOpen: Dispatch<SetStateAction<boolean>>;
+  setIsPrescriptionOpen: Dispatch<SetStateAction<boolean>>;
+  doctors: Doctor[] | undefined;
   sendWhatsAppMessage: (appointment: Appointment) => void;
   openEditAppointment: (appointment: Appointment) => void;
   deleteAppointmentMutation: { mutate: (appointmentId: string) => void };
@@ -41,11 +45,15 @@ export function AppointmentsTable({
   setIsRecordDialogOpen,
   setIsExecutePlanDialogOpen,
   setIsResumeDialogOpen,
+  setIsPrescriptionOpen,
+  doctors,
   sendWhatsAppMessage,
   openEditAppointment,
   deleteAppointmentMutation,
 }: AppointmentsTableProps) {
   const isMobile = useIsMobile();
+  const { userRole } = useUserRole();
+  const canPrescribe = userRole === "super_admin" || userRole === "doctor";
 
   return (
     <>
@@ -144,25 +152,40 @@ export function AppointmentsTable({
                                   <FileText className="h-4 w-4 ml-1" />
                                   تسجيل علاج
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedAppointment(appointment);
-                                    setIsExecutePlanDialogOpen(true);
-                                  }}
-                                >
-                                  <ClipboardCheck className="h-4 w-4 ml-1" />
-                                  تنفيذ خطة علاج
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedAppointment(appointment);
-                                    setIsResumeDialogOpen(true);
-                                  }}
-                                >
-                                  <CheckSquare className="h-4 w-4 ml-1" />
-                                  استكمال علاج
-                                </DropdownMenuItem>
+                                {isDentalAppointment(appointment, doctors) && (
+                                  <>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setSelectedAppointment(appointment);
+                                      setIsExecutePlanDialogOpen(true);
+                                    }}
+                                  >
+                                    <ClipboardCheck className="h-4 w-4 ml-1" />
+                                    تنفيذ خطة علاج
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setSelectedAppointment(appointment);
+                                      setIsResumeDialogOpen(true);
+                                    }}
+                                  >
+                                    <CheckSquare className="h-4 w-4 ml-1" />
+                                    استكمال علاج
+                                  </DropdownMenuItem>
+                                  </>
+                                )}
                               </>
+                            )}
+                            {canPrescribe && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedAppointment(appointment);
+                                  setIsPrescriptionOpen(true);
+                                }}
+                              >
+                                <Pill className="h-4 w-4 ml-1" />
+                                وصفة طبية
+                              </DropdownMenuItem>
                             )}
                             <DropdownMenuItem
                               onClick={() => sendWhatsAppMessage(appointment)}
@@ -195,7 +218,7 @@ export function AppointmentsTable({
                           </DropdownMenuContent>
                         </DropdownMenu>
                       ) : (
-                        <div className="flex space-x-2">
+                        <div className="flex gap-2">
                           {appointment.status === 'Scheduled' && (
                             <>
                               <Button
@@ -209,31 +232,50 @@ export function AppointmentsTable({
 
                                 تسجيل علاج
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedAppointment(appointment);
-                                  setIsExecutePlanDialogOpen(true);
-                                }}
-                                className="text-blue-600 hover:text-blue-700"
-                              >
+                              {isDentalAppointment(appointment, doctors) && (
+                                <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedAppointment(appointment);
+                                    setIsExecutePlanDialogOpen(true);
+                                  }}
+                                  className="text-blue-600 hover:text-blue-700"
+                                >
 
-                                تنفيذ خطة علاج
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedAppointment(appointment);
-                                  setIsResumeDialogOpen(true);
-                                }}
-                                className="text-orange-600 hover:text-orange-700"
-                              >
+                                  تنفيذ خطة علاج
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedAppointment(appointment);
+                                    setIsResumeDialogOpen(true);
+                                  }}
+                                  className="text-orange-600 hover:text-orange-700"
+                                >
 
-                                استكمال علاج
-                              </Button>
+                                  استكمال علاج
+                                </Button>
+                                </>
+                              )}
                             </>
+                          )}
+                          {canPrescribe && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedAppointment(appointment);
+                                setIsPrescriptionOpen(true);
+                              }}
+                              className="text-purple-700 hover:text-purple-800"
+                              title="وصفة طبية"
+                              aria-label="وصفة طبية"
+                            >
+                              <Pill className="h-4 w-4" />
+                            </Button>
                           )}
                           <Button
                             variant="outline"

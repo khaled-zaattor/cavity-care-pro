@@ -11,6 +11,8 @@ import { PatientPrescriptions } from "@/components/PatientPrescriptions";
 import { PatientFiles } from "@/components/PatientFiles";
 import { PatientTimeline } from "@/components/PatientTimeline";
 import { PrescriptionDialog } from "@/components/PrescriptionDialog";
+import { GynecologyProfileCard } from "@/components/GynecologyProfileCard";
+import { PatientMedicalRecord } from "@/components/PatientMedicalRecord";
 import {
   apiErrorMessage,
   appointmentsApi,
@@ -30,7 +32,9 @@ export default function PatientProfile() {
   const { patientId = "" } = useParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { canManagePayments, isSuperAdmin, userRole } = useUserRole();
+  const { canManagePayments, isSuperAdmin, userRole, isDentalOnlyDoctor } = useUserRole();
+  // الملف النسائي and echo images: everyone except doctors who only practise dentistry
+  const showGynecology = !isDentalOnlyDoctor;
   const canPrescribe = userRole === "super_admin" || userRole === "doctor";
   const [isPrescriptionOpen, setIsPrescriptionOpen] = useState(false);
 
@@ -216,6 +220,13 @@ export default function PatientProfile() {
         setIsPrescriptionOpen={setIsPrescriptionOpen}
         showError={showError}
       />
+
+      {(activeSection === "all" || activeSection === "timeline") && patientId && (
+        <>
+          {showGynecology && <GynecologyProfileCard patientId={patientId} />}
+          <PatientMedicalRecord patientId={patientId} showEcho={showGynecology} />
+        </>
+      )}
 
       {/* Unfinished Treatments - Always visible when exists */}
       {unfinishedSubTreatments && unfinishedSubTreatments.length > 0 && (

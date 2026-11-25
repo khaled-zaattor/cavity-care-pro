@@ -95,7 +95,7 @@ function MedicinesTab({ canWrite }: { canWrite: boolean }) {
 
   const { data: medicines = [], isLoading } = useQuery({
     queryKey: ["medicines", "manage", canWrite],
-    queryFn: () => medicinesApi.list({ include_inactive: canWrite }),
+    queryFn: () => medicinesApi.list({ include_inactive: canWrite, limit: 2000 }),
   });
 
   const { data: specialties = [] } = useQuery({

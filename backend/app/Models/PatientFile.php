@@ -16,11 +16,16 @@ class PatientFile extends Model
 {
     use HasUuids, SoftDeletes;
 
-    public const CATEGORIES = ['xray', 'radiology', 'lab_test', 'report', 'photo', 'prescription_scan', 'other'];
+    public const CATEGORIES = ['xray', 'radiology', 'echo_abdominal', 'echo_gyn', 'lab_test', 'report', 'photo', 'prescription_scan', 'other'];
+
+    /** Echo images shown as "latest" in the patient's medical record. */
+    public const ECHO_CATEGORIES = ['echo_abdominal', 'echo_gyn'];
 
     public const CATEGORY_LABELS = [
         'xray' => 'صورة أشعة',
         'radiology' => 'تصوير شعاعي (بانوراما/طبقي)',
+        'echo_abdominal' => 'إيكو بطن',
+        'echo_gyn' => 'إيكو نسائي',
         'lab_test' => 'تحليل مخبري',
         'report' => 'تقرير طبي',
         'photo' => 'صورة',

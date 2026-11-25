@@ -50,6 +50,8 @@ const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp", "pdf"];
 const FALLBACK_CATEGORIES: Record<PatientFileCategory, string> = {
   xray: "صورة أشعة",
   radiology: "تصوير شعاعي",
+  echo_abdominal: "إيكو بطن",
+  echo_gyn: "إيكو نسائي",
   lab_test: "تحليل مخبري",
   report: "تقرير",
   photo: "صورة",
@@ -258,6 +260,7 @@ export function PatientFiles({ patientId }: { patientId: string }) {
     setUploading(null);
     queryClient.invalidateQueries({ queryKey });
     queryClient.invalidateQueries({ queryKey: ["patient-timeline", patientId] });
+    queryClient.invalidateQueries({ queryKey: ["medical-summary", patientId] });
     const skipped = pending.length - toUpload.length;
     if (failures.length === 0) {
       toast({ title: ok === 1 ? "تم رفع الملف" : `تم رفع ${ok} ملفات`, description: skipped ? `تم تجاهل ${skipped} ملف غير صالح` : undefined });
@@ -326,6 +329,7 @@ export function PatientFiles({ patientId }: { patientId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["patient-timeline", patientId] });
+    queryClient.invalidateQueries({ queryKey: ["medical-summary", patientId] });
       setEditMode(false);
       toast({ title: "تم حفظ التعديلات" });
     },
@@ -337,6 +341,7 @@ export function PatientFiles({ patientId }: { patientId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["patient-timeline", patientId] });
+    queryClient.invalidateQueries({ queryKey: ["medical-summary", patientId] });
       setViewerId(null);
       toast({ title: "تم حذف الملف" });
     },

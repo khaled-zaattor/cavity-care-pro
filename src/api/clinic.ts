@@ -546,7 +546,7 @@ export interface ClinicSettings {
 }
 
 export const medicinesApi = {
-  list: (params: { q?: string; include_inactive?: boolean; specialty_id?: string } = {}) =>
+  list: (params: { q?: string; include_inactive?: boolean; specialty_id?: string; limit?: number } = {}) =>
     d(api.get<Data<Medicine[]>>("/medicines", { ...params, include_inactive: params.include_inactive ? 1 : undefined })),
   create: (body: Partial<Medicine> & { trade_name: string }) => d(api.post<Data<Medicine>>("/medicines", body)),
   update: (id: string, body: Partial<Medicine>) => d(api.patch<Data<Medicine>>(`/medicines/${id}`, body)),
@@ -591,7 +591,8 @@ export const clinicSettingsApi = {
 // Phase F: patient files and medical timeline
 // ---------------------------------------------------------------------------
 
-export type PatientFileCategory = "xray" | "radiology" | "lab_test" | "report" | "photo" | "prescription_scan" | "other";
+export type PatientFileCategory =
+  | "xray" | "radiology" | "echo_abdominal" | "echo_gyn" | "lab_test" | "report" | "photo" | "prescription_scan" | "other";
 
 export interface PatientFile {
   id: string;
@@ -663,6 +664,56 @@ export const patientFilesApi = {
   /** Same-origin URLs (session cookie) for <img>/<a>. */
   contentUrl: (id: string, download = false) => `${API_BASE}/patient-files/${id}/content${download ? "?download=1" : ""}`,
   thumbnailUrl: (id: string) => `${API_BASE}/patient-files/${id}/thumbnail`,
+};
+
+// ---------------------------------------------------------------------------
+// السجل الطبي: gynecology profile, latest echo, medicines taken
+// ---------------------------------------------------------------------------
+
+export interface GynecologyProfile {
+  id?: string;
+  patient_id?: string;
+  is_smoker: boolean | null;
+  marital_status: "single" | "married" | null;
+  pregnancies: number | null;
+  living_children: number | null;
+  abortions: number | null;
+  preterm_births: number | null;
+  medical_history: string | null;
+  surgical_history: string | null;
+  family_history: string | null;
+  allergy_history: string | null;
+  medication_history: string | null;
+  weight_kg: number | null;
+  blood_pressure: string | null;
+  updated_at?: string;
+  editor?: { id: string; full_name: string | null; email: string } | null;
+}
+
+export interface MedicationEntry {
+  id: string;
+  medicine_name: string;
+  dose: string | null;
+  frequency: string | null;
+  duration: string | null;
+  instructions: string | null;
+  prescription_id: string;
+  prescription_number: number;
+  issued_at: string;
+  diagnosis: string | null;
+  doctor_name: string | null;
+}
+
+export interface MedicalSummary {
+  latest_echo: Partial<Record<"echo_abdominal" | "echo_gyn", PatientFile | null>>;
+  medications: MedicationEntry[];
+}
+
+export const medicalApi = {
+  gynecology: (patientId: string) => d(api.get<Data<GynecologyProfile | null>>(`/patients/${patientId}/gynecology-profile`)),
+  saveGynecology: (patientId: string, body: Partial<GynecologyProfile>) =>
+    d(api.put<Data<GynecologyProfile>>(`/patients/${patientId}/gynecology-profile`, body)),
+  summary: (patientId: string) => d(api.get<Data<MedicalSummary>>(`/patients/${patientId}/medical-summary`)),
 };
 
 export const timelineApi = {

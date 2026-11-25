@@ -49,6 +49,32 @@ final class DoctorBooks
         return $this->doctor?->getKey();
     }
 
+    /** @var string[]|null */
+    private ?array $specialtyIds = null;
+
+    /** Specialties of the logged-in doctor (empty when the user is not a doctor). */
+    public function currentSpecialtyIds(): array
+    {
+        return $this->specialtyIds ??= $this->doctor
+            ? $this->doctor->specialties()->pluck('specialties.id')->all()
+            : [];
+    }
+
+    /**
+     * Treatment catalog (2026-11-25): split by specialty only. A doctor sees
+     * the treatments of their specialties; admin, reception and assistants
+     * see every specialty. A doctor with no specialty set sees everything.
+     */
+    public function catalogSpecialtyIds(): ?array
+    {
+        if ($this->user->isSuperAdmin() || ! $this->user->hasRole(Role::DOCTOR)) {
+            return null;
+        }
+        $ids = $this->currentSpecialtyIds();
+
+        return $ids === [] ? null : $ids;
+    }
+
     public function isIndependentDoctor(): bool
     {
         return (bool) $this->doctor?->has_own_books;

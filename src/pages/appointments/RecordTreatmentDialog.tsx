@@ -61,18 +61,31 @@ export function RecordTreatmentDialog({
     }
   }, [isRecordDialogOpen, selectedAppointment]);
 
-  // Only offer the catalog that belongs to the selected appointment's doctor:
-  // an independent doctor's own treatments, otherwise the clinic catalog (doctor_id NULL).
+  // The catalog is split by specialty: offer the treatments of the appointment's specialty,
+  // or of the doctor's specialties when the appointment has none.
   const selectedAppointmentDoctor = doctors?.find((d) => d.id === selectedAppointment?.doctor_id);
-  const catalogDoctorId = selectedAppointmentDoctor?.has_own_books ? selectedAppointmentDoctor.id : null;
-  const treatments = allTreatments?.filter((t) => (t.doctor_id ?? null) === catalogDoctorId);
+  const catalogSpecialtyIds: string[] | null = selectedAppointment?.specialty_id
+    ? [selectedAppointment.specialty_id]
+    : selectedAppointmentDoctor?.specialties.length
+      ? selectedAppointmentDoctor.specialties.map((s) => s.id)
+      : null;
+  const treatments = allTreatments?.filter((t) => !catalogSpecialtyIds || catalogSpecialtyIds.includes(t.specialty_id));
   const noTreatments = !!allTreatments && (treatments?.length ?? 0) === 0;
+  const specialtyNames = selectedAppointment?.specialty
+    ? selectedAppointment.specialty.name_ar
+    : selectedAppointmentDoctor?.specialties.map((s) => s.name_ar).join("، ");
   const selectedTreatment = treatments?.find((t) => t.id === treatmentRecord.treatment_id);
   const subTreatments = selectedTreatment?.sub_treatments ?? [];
   const selectedSubTreatment = subTreatments.find((st) => st.id === treatmentRecord.sub_treatment_id);
   const treatmentSteps = sortSteps(selectedSubTreatment?.steps);
   const toothAssociation = selectedSubTreatment?.tooth_association || "not_related";
-  const isToothSelectionEnabled = toothAssociation !== "not_related" && selectedTreatment?.specialty?.is_dental !== false;
+  // Non-dental (e.g. طب نسائي): no tooth section at all.
+  const isDentalContext = selectedTreatment
+    ? selectedTreatment.specialty?.is_dental !== false
+    : selectedAppointment?.specialty
+      ? selectedAppointment.specialty.is_dental
+      : !selectedAppointmentDoctor?.specialties.length || selectedAppointmentDoctor.specialties.some((s) => s.is_dental);
+  const isToothSelectionEnabled = toothAssociation !== "not_related" && isDentalContext;
   const isSingleToothOnly = toothAssociation === "single_tooth";
 
   // Query to get completed steps for an appointment
@@ -144,9 +157,9 @@ export function RecordTreatmentDialog({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>تسجيل علاج</DialogTitle>
-          <DialogDescription className={catalogDoctorId ? undefined : "sr-only"}>
-            {catalogDoctorId
-              ? `العلاجات المعروضة من قائمة ${selectedAppointmentDoctor?.full_name} الخاصة (طبيب بحسابات مستقلة).`
+          <DialogDescription className={specialtyNames ? undefined : "sr-only"}>
+            {specialtyNames
+              ? `العلاجات المعروضة من اختصاص: ${specialtyNames}.`
               : "اختر العلاج والعلاج الفرعي وسجّل التكلفة والدفعة لهذا الموعد."}
           </DialogDescription>
         </DialogHeader>
@@ -172,9 +185,9 @@ export function RecordTreatmentDialog({
               </Select>
               {noTreatments && (
                 <p className="text-xs text-destructive mt-1">
-                  {catalogDoctorId
-                    ? `${selectedAppointmentDoctor?.full_name} طبيب بحسابات مستقلة وقائمة علاجاته فارغة. أضف علاجاته من صفحة العلاجات (اختر الطبيب أعلى الصفحة)، أو ألغِ خيار «حسابات مستقلة» من صفحة الأطباء إن كان مفعّلاً بالخطأ.`
-                    : "لا توجد علاجات في قائمة العيادة. أضفها من صفحة العلاجات."}
+                  {specialtyNames
+                    ? `لا توجد علاجات لاختصاص ${specialtyNames}. أضفها من صفحة العلاجات.`
+                    : "لا توجد علاجات. أضفها من صفحة العلاجات."}
                 </p>
               )}
             </div>
@@ -209,7 +222,8 @@ export function RecordTreatmentDialog({
           {(() => {
             // isToothSelectionEnabled: sub-treatment linked to teeth AND a dental treatment
             return (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className={isDentalContext ? "grid grid-cols-1 lg:grid-cols-3 gap-4" : "grid grid-cols-1 gap-4"}>
+                {isDentalContext && (
                 <div className="lg:col-span-2">
                   <Label>رقم السن</Label>
                   {!isToothSelectionEnabled ? (
@@ -226,7 +240,8 @@ export function RecordTreatmentDialog({
                       />
                   )}
                 </div>
-                <div className="space-y-3">
+                )}
+                <div className={isDentalContext ? "space-y-3" : "grid grid-cols-1 md:grid-cols-2 gap-3"}>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label htmlFor="actual_cost_syp">التكلفة بالليرة السورية</Label>

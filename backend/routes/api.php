@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\MoneyController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PatientFileController;
 use App\Http\Controllers\Api\PatientHistoryController;
+use App\Http\Controllers\Api\PatientMedicalController;
 use App\Http\Controllers\Api\PrescriptionController;
 use App\Http\Controllers\Api\PrescriptionTemplateController;
 use App\Http\Controllers\Api\ReportController;
@@ -72,6 +73,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/patients/{patient}/balance', [PatientHistoryController::class, 'balance']);
     Route::get('/patients/{patient}/treatment-plans', [PatientHistoryController::class, 'plans']);
     Route::get('/patients/{patient}/unfinished', [PatientHistoryController::class, 'unfinished']);
+    Route::get('/patients/{patient}/gynecology-profile', [PatientMedicalController::class, 'showGynecology']);
+    Route::put('/patients/{patient}/gynecology-profile', [PatientMedicalController::class, 'updateGynecology']);
+    Route::get('/patients/{patient}/medical-summary', [PatientMedicalController::class, 'summary']);
 
     // Appointments
     Route::get('/appointments/today', [AppointmentController::class, 'today']);

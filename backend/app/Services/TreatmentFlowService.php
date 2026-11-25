@@ -257,7 +257,7 @@ class TreatmentFlowService
         ]);
     }
 
-    /** Treatment must be from the appointment doctor's books (clinic catalog or their own). */
+    /** Treatment must belong to one of the appointment doctor's specialties (any, if none is set). */
     private function catalogFor(Appointment $appointment, string $treatmentId, string $subId): array
     {
         $treatment = Treatment::withTrashed()->with('specialty')->findOrFail($treatmentId);
@@ -267,9 +267,9 @@ class TreatmentFlowService
         }
 
         $doctor = $appointment->doctor()->withTrashed()->first();
-        $catalogOwner = $doctor?->has_own_books ? $doctor->id : null;
-        if ($treatment->doctor_id !== $catalogOwner) {
-            throw ValidationException::withMessages(['treatment_id' => ['هذا العلاج ليس من قائمة علاجات طبيب الموعد']]);
+        $specialties = $doctor ? $doctor->specialties()->pluck('specialties.id')->all() : [];
+        if ($specialties !== [] && ! in_array($treatment->specialty_id, $specialties, true)) {
+            throw ValidationException::withMessages(['treatment_id' => ['هذا العلاج ليس من اختصاص طبيب الموعد']]);
         }
 
         return [$treatment, $sub];

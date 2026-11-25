@@ -10,6 +10,8 @@ export interface CurrentUser {
   doctor_id: string | null;
   has_own_books: boolean;
   is_independent_doctor: boolean;
+  /** the doctor's specialties (empty for non-doctors) */
+  specialties?: { id: string; name_ar: string; is_dental: boolean }[];
 }
 
 export async function login(email: string, password: string): Promise<CurrentUser> {

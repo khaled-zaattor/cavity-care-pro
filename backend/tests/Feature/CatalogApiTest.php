@@ -50,82 +50,64 @@ class CatalogApiTest extends TestCase
         $this->actingAs($this->assistant)->postJson('/doctors', ['full_name' => 'x', 'specialty_ids' => [$dental->id]])->assertForbidden();
     }
 
-    /** The whole children's-doctor setup done from the screens, without artisan. */
-    public function test_admin_sets_up_a_childrens_doctor_from_the_screens(): void
+    /** The catalog is split by specialty only: every doctor of a specialty sees its treatments. */
+    public function test_doctors_see_the_treatments_of_their_specialties(): void
     {
         $kids = Specialty::where('code', 'pediatrics')->first();
 
-        // 1. لوحة الإدارة: the login
+        // a second doctor of the same specialty, with their own books
         $userId = $this->actingAs($this->admin)->postJson('/admin/users', [
             'email' => 'kids2@clinic.test', 'full_name' => 'د. سمر', 'role' => 'doctor', 'password' => 'Secret-123456',
         ])->assertCreated()->json('data.id');
-
-        // 2. الأطباء → إضافة دكتور: one dialog, linked login + separate books
-        $doctorId = $this->actingAs($this->admin)->postJson('/doctors', [
+        $this->actingAs($this->admin)->postJson('/doctors', [
             'full_name' => 'د. سمر', 'specialty_ids' => [$kids->id], 'primary_specialty_id' => $kids->id,
             'user_id' => $userId, 'has_own_books' => true,
-        ])->assertCreated()->assertJsonPath('data.has_own_books', true)->assertJsonPath('data.user_id', $userId)->json('data.id');
+        ])->assertCreated();
 
-        // 3. العلاجات → كتالوج د. سمر: treatment + priced sub-treatment
+        // a doctor_id sent by an old screen is ignored: no doctor-owned catalogs
         $treatmentId = $this->actingAs($this->admin)->postJson('/treatments', [
-            'name' => 'معاينة وفحص', 'specialty_id' => $kids->id, 'doctor_id' => $doctorId,
-        ])->assertCreated()->assertJsonPath('data.doctor_id', $doctorId)->json('data.id');
-        $this->actingAs($this->admin)->postJson('/sub-treatments', [
-            'treatment_id' => $treatmentId, 'name' => 'معاينة وفحص', 'estimated_cost_syp' => 50000,
-        ])->assertCreated()->assertJsonPath('data.tooth_association', 'not_related');
+            'name' => 'متابعة', 'specialty_id' => $kids->id, 'doctor_id' => $this->kidsDoctor->id,
+        ])->assertCreated()->assertJsonPath('data.doctor_id', null)->json('data.id');
 
-        // The doctor sees only their own catalog; the clinic staff don't get it mixed into dentistry.
-        $doctorUser = \App\Models\User::find($userId);
-        $this->actingAs($doctorUser)->getJson('/treatments')->assertOk()
-            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $treatmentId);
-        $this->actingAs($this->assistant)->getJson('/treatments')->assertJsonMissing(['id' => $treatmentId]);
-    }
-
-    /** A treatment added to the clinic catalog by mistake can be moved to the doctor's own catalog. */
-    public function test_admin_moves_a_treatment_into_an_independent_doctors_catalog(): void
-    {
-        $kids = Specialty::where('code', 'pediatrics')->first();
-        $id = $this->actingAs($this->admin)->postJson('/treatments', ['name' => 'متابعة', 'specialty_id' => $kids->id])
-            ->assertCreated()->assertJsonPath('data.doctor_id', null)->json('data.id');
-        $this->actingAs($this->kidsDoctorUser)->getJson('/treatments')->assertJsonMissing(['id' => $id]);
-
-        // only the super_admin may move it, and only to a doctor with own books
-        $this->actingAs($this->kidsDoctorUser)->patchJson("/treatments/$id", ['doctor_id' => $this->kidsDoctor->id])->assertForbidden();
-        $this->actingAs($this->admin)->patchJson("/treatments/$id", ['doctor_id' => $this->clinicDoctor->id])->assertStatus(422);
-
-        $this->actingAs($this->admin)->patchJson("/treatments/$id", ['doctor_id' => $this->kidsDoctor->id])
-            ->assertOk()->assertJsonPath('data.doctor_id', $this->kidsDoctor->id);
-        $this->actingAs($this->kidsDoctorUser)->getJson('/treatments')->assertJsonFragment(['id' => $id]);
-
-        // editing without doctor_id keeps the catalog
-        $this->actingAs($this->admin)->patchJson("/treatments/$id", ['name' => 'متابعة 2'])->assertJsonPath('data.doctor_id', $this->kidsDoctor->id);
-    }
-
-    public function test_treatment_used_in_records_cannot_change_catalog(): void
-    {
-        $this->actingAs($this->admin)->patchJson("/treatments/{$this->clinicTreatment->id}", ['doctor_id' => $this->kidsDoctor->id])
-            ->assertStatus(422);
-    }
-
-    public function test_catalog_listing_follows_books_rules(): void
-    {
-        $this->actingAs($this->assistant)->getJson('/treatments')->assertOk()
+        foreach ([\App\Models\User::find($userId), $this->kidsDoctorUser] as $doctorUser) {
+            $this->actingAs($doctorUser)->getJson('/treatments')->assertOk()
+                ->assertJsonCount(2, 'data')->assertJsonFragment(['id' => $treatmentId])
+                ->assertJsonMissing(['id' => $this->clinicTreatment->id]);
+        }
+        // the dentist does not get the other specialty mixed in
+        $this->actingAs($this->clinicDoctorUser)->getJson('/treatments')
             ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $this->clinicTreatment->id);
-        $this->actingAs($this->kidsDoctorUser)->getJson('/treatments')
-            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $this->kidsTreatment->id);
-        $this->actingAs($this->receptionist)->getJson('/treatments')->assertJsonCount(2, 'data');
+        // admin, reception, assistants: every specialty
+        foreach ([$this->admin, $this->receptionist, $this->assistant] as $user) {
+            $this->actingAs($user)->getJson('/treatments')->assertJsonCount(3, 'data');
+        }
     }
 
-    public function test_independent_doctor_creates_into_own_catalog_only(): void
+    public function test_independent_doctor_writes_only_in_own_specialty(): void
     {
         $kids = Specialty::where('code', 'pediatrics')->first();
+        $dental = Specialty::where('code', 'dental')->first();
 
-        $this->actingAs($this->kidsDoctorUser)->postJson('/treatments', [
-            'name' => 'لقاح', 'specialty_id' => $kids->id, 'doctor_id' => null,
-        ])->assertCreated()->assertJsonPath('data.doctor_id', $this->kidsDoctor->id);
-
+        $id = $this->actingAs($this->kidsDoctorUser)->postJson('/treatments', ['name' => 'لقاح', 'specialty_id' => $kids->id])
+            ->assertCreated()->assertJsonPath('data.doctor_id', null)->json('data.id');
+        $this->actingAs($this->kidsDoctorUser)->postJson('/treatments', ['name' => 'x', 'specialty_id' => $dental->id])->assertForbidden();
         $this->actingAs($this->kidsDoctorUser)->patchJson("/treatments/{$this->clinicTreatment->id}", ['name' => 'x'])->assertForbidden();
-        $this->actingAs($this->clinicDoctorUser)->postJson('/treatments', ['name' => 'x', 'specialty_id' => $kids->id])->assertForbidden();
+        // cannot move own treatment into a specialty they don't practise
+        $this->actingAs($this->kidsDoctorUser)->patchJson("/treatments/$id", ['specialty_id' => $dental->id])->assertForbidden();
+        // a clinic (not independent) doctor does not edit the catalog
+        $this->actingAs($this->clinicDoctorUser)->postJson('/treatments', ['name' => 'x', 'specialty_id' => $dental->id])->assertForbidden();
+        // admin moves treatments between specialties
+        $this->actingAs($this->admin)->patchJson("/treatments/$id", ['specialty_id' => $dental->id])
+            ->assertOk()->assertJsonPath('data.specialty_id', $dental->id);
+    }
+
+    public function test_recording_requires_a_treatment_of_the_doctors_specialty(): void
+    {
+        $sub = $this->clinicTreatment->subTreatments()->first();
+        $this->kidsAppointment->update(['status' => 'Scheduled']);
+        $this->actingAs($this->admin)->postJson("/appointments/{$this->kidsAppointment->id}/treatments", [
+            'treatment_id' => $this->clinicTreatment->id, 'sub_treatment_id' => $sub->id,
+        ])->assertStatus(422)->assertJsonValidationErrors('treatment_id');
     }
 
     public function test_non_dental_sub_treatments_never_get_tooth_options(): void

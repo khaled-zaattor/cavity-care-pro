@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Save, Trash2, Printer, FileText } from "lucide-react";
+import { Plus, Save, Trash2, Printer, FileText, ListPlus } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -27,8 +29,12 @@ const emptyRow = (): Row => ({ key: ++rowKey, medicine_id: null, medicine_name: 
 const toRows = (items: PrescriptionItemInput[]): Row[] => (items.length ? items.map((i) => ({ ...i, key: ++rowKey })) : [emptyRow()]);
 
 const medicineLabel = (m: Medicine) => [m.trade_name, m.strength].filter(Boolean).join(" ");
+const medicineText = (m: Medicine) => [m.trade_name, m.generic_name, m.strength, m.form].filter(Boolean).join(" ").toLowerCase();
 
-/** Medicine name input with instant suggestions from the (preloaded) catalog. */
+/**
+ * Medicine name input with suggestions from the catalog. Falls back to a server
+ * search when nothing matches locally (large catalogs are loaded partially).
+ */
 function MedicineInput({ value, medicines, onPick, onType }: {
   value: string;
   medicines: Medicine[];
@@ -36,13 +42,17 @@ function MedicineInput({ value, medicines, onPick, onType }: {
   onType: (text: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const matches = useMemo(() => {
-    const q = value.trim().toLowerCase();
-    if (!q) return medicines.slice(0, 8);
-    return medicines
-      .filter((m) => m.trade_name.toLowerCase().includes(q) || (m.generic_name ?? "").toLowerCase().includes(q))
-      .slice(0, 8);
-  }, [value, medicines]);
+  const q = value.trim().toLowerCase();
+  const localMatches = useMemo(() => {
+    if (!q) return medicines.slice(0, 30);
+    return medicines.filter((m) => medicineText(m).includes(q)).slice(0, 30);
+  }, [q, medicines]);
+  const { data: remote = [] } = useQuery({
+    queryKey: ["medicines", "search", q],
+    queryFn: () => medicinesApi.list({ q, limit: 30 }),
+    enabled: open && q.length >= 2 && localMatches.length === 0,
+  });
+  const matches = localMatches.length > 0 ? localMatches : remote;
 
   return (
     <div className="relative">
@@ -86,6 +96,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   patient: { id: string; full_name: string };
   appointmentId?: string | null;
+  /** Doctor preselected for the admin (e.g. the appointment's doctor). */
+  defaultDoctorId?: string | null;
   /** Edit an existing prescription instead of writing a new one. */
   prescription?: Prescription | null;
 }
@@ -94,7 +106,7 @@ interface Props {
  * Write / edit a prescription (plan §2.3). After saving, the A4 print page
  * opens in a new tab.
  */
-export function PrescriptionDialog({ open, onOpenChange, patient, appointmentId, prescription }: Props) {
+export function PrescriptionDialog({ open, onOpenChange, patient, appointmentId, defaultDoctorId, prescription }: Props) {
   const queryClient = useQueryClient();
   const { isSuperAdmin, doctorId: ownDoctorId } = useUserRole();
   const editing = !!prescription;
@@ -108,15 +120,44 @@ export function PrescriptionDialog({ open, onOpenChange, patient, appointmentId,
 
   useEffect(() => {
     if (!open) return;
-    setDoctorId(prescription?.doctor_id ?? ownDoctorId ?? "");
+    setDoctorId(prescription?.doctor_id ?? defaultDoctorId ?? ownDoctorId ?? "");
     setDiagnosis(prescription?.diagnosis ?? "");
     setNotes(prescription?.notes ?? "");
     setRows(toRows(prescription?.items ?? []));
     setShowSaveTemplate(false);
     setTemplateName("");
-  }, [open, prescription, ownDoctorId]);
+  }, [open, prescription, ownDoctorId, defaultDoctorId]);
 
-  const { data: medicines = [] } = useQuery({ queryKey: ["medicines"], queryFn: () => medicinesApi.list(), enabled: open });
+  // Reloaded every time the dialog opens, so medicines just added on «الأدوية» are offered.
+  const { data: medicines = [] } = useQuery({
+    queryKey: ["medicines", "prescription"],
+    queryFn: () => medicinesApi.list({ limit: 2000 }),
+    enabled: open,
+    refetchOnMount: "always",
+  });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickMedicine = (key: number, m: Medicine, current?: Row) =>
+    setRow(key, {
+      medicine_id: m.id,
+      medicine_name: medicineLabel(m),
+      dose: current?.dose || m.default_dose || "",
+      frequency: current?.frequency || m.default_frequency || "",
+      duration: current?.duration || m.default_duration || "",
+    });
+  /** «من قائمة الأدوية»: fill the last empty row, or add a new one. */
+  const addFromCatalog = (m: Medicine) => {
+    const last = rows[rows.length - 1];
+    if (last && !(last.medicine_name ?? "").trim() && !last.medicine_id) {
+      pickMedicine(last.key, m, last);
+    } else {
+      const row = emptyRow();
+      setRows((rs) => [
+        ...rs,
+        { ...row, medicine_id: m.id, medicine_name: medicineLabel(m), dose: m.default_dose ?? "", frequency: m.default_frequency ?? "", duration: m.default_duration ?? "" },
+      ]);
+    }
+    setPickerOpen(false);
+  };
   const { data: doctors = [] } = useQuery({ queryKey: ["doctors"], queryFn: () => doctorsApi.list(), enabled: open && isSuperAdmin });
   const templateDoctor = isSuperAdmin ? doctorId || undefined : undefined;
   const { data: templates = [] } = useQuery({
@@ -141,6 +182,7 @@ export function PrescriptionDialog({ open, onOpenChange, patient, appointmentId,
     },
     onSuccess: (p) => {
       queryClient.invalidateQueries({ queryKey: ["prescriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["medical-summary"] });
       toast({ title: editing ? "تم تعديل الوصفة" : `تم حفظ الوصفة رقم ${p.number}` });
       onOpenChange(false);
     },
@@ -239,15 +281,7 @@ export function PrescriptionDialog({ open, onOpenChange, patient, appointmentId,
                       value={r.medicine_name ?? ""}
                       medicines={medicines}
                       onType={(text) => setRow(r.key, { medicine_name: text, medicine_id: null })}
-                      onPick={(m) =>
-                        setRow(r.key, {
-                          medicine_id: m.id,
-                          medicine_name: medicineLabel(m),
-                          dose: r.dose || m.default_dose || "",
-                          frequency: r.frequency || m.default_frequency || "",
-                          duration: r.duration || m.default_duration || "",
-                        })
-                      }
+                      onPick={(m) => pickMedicine(r.key, m, r)}
                     />
                   </div>
                   <Button
@@ -271,10 +305,40 @@ export function PrescriptionDialog({ open, onOpenChange, patient, appointmentId,
                 </div>
               </div>
             ))}
-            <Button type="button" variant="outline" size="sm" onClick={() => setRows((rs) => [...rs, emptyRow()])}>
-              <Plus className="h-4 w-4 ms-1" />
-              إضافة دواء
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="default" size="sm">
+                    <ListPlus className="h-4 w-4 ms-1" />
+                    اختيار من قائمة الأدوية ({medicines.length})
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0" align="start">
+                  <Command filter={(itemValue, search) => (itemValue.toLowerCase().includes(search.trim().toLowerCase()) ? 1 : 0)}>
+                    <CommandInput placeholder="ابحث باسم الدواء..." />
+                    <CommandList className="max-h-72">
+                      <CommandEmpty>لا يوجد دواء بهذا الاسم. أضفه من صفحة الأدوية أو اكتبه يدوياً.</CommandEmpty>
+                      <CommandGroup>
+                        {medicines.map((m) => (
+                          <CommandItem key={m.id} value={`${medicineText(m)} ${m.id}`} onSelect={() => addFromCatalog(m)}>
+                            <div className="flex flex-col">
+                              <span className="font-medium" dir="ltr">{medicineLabel(m)}</span>
+                              {(m.generic_name || m.form) && (
+                                <span className="text-xs text-muted-foreground">{[m.generic_name, m.form].filter(Boolean).join(" · ")}</span>
+                              )}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <Button type="button" variant="outline" size="sm" onClick={() => setRows((rs) => [...rs, emptyRow()])}>
+                <Plus className="h-4 w-4 ms-1" />
+                سطر دواء فارغ
+              </Button>
+            </div>
           </div>
 
           <div>

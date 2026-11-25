@@ -1,12 +1,13 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileText, MessageCircle, CheckSquare, Pencil, Trash2, ClipboardCheck, CreditCard } from "lucide-react";
+import { FileText, MessageCircle, CheckSquare, Pencil, Trash2, ClipboardCheck, CreditCard, Pill } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useQueryClient } from "@tanstack/react-query";
-import { appointmentsApi, apiErrorMessage, type Appointment, type AppointmentStatus } from "@/api/clinic";
+import { appointmentsApi, apiErrorMessage, type Appointment, type AppointmentStatus, type Doctor } from "@/api/clinic";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { isDentalAppointment } from "./utils";
 
 interface AppointmentOptionsDialogProps {
   showOptionsMenu: boolean;
@@ -16,6 +17,8 @@ interface AppointmentOptionsDialogProps {
   setIsExecutePlanDialogOpen: Dispatch<SetStateAction<boolean>>;
   setIsResumeDialogOpen: Dispatch<SetStateAction<boolean>>;
   setIsAddPaymentDialogOpen: Dispatch<SetStateAction<boolean>>;
+  setIsPrescriptionOpen: Dispatch<SetStateAction<boolean>>;
+  doctors: Doctor[] | undefined;
   sendWhatsAppMessage: (appointment: Appointment) => void;
   openEditAppointment: (appointment: Appointment) => void;
   deleteAppointmentMutation: { mutate: (appointmentId: string) => void };
@@ -30,13 +33,17 @@ export function AppointmentOptionsDialog({
   setIsExecutePlanDialogOpen,
   setIsResumeDialogOpen,
   setIsAddPaymentDialogOpen,
+  setIsPrescriptionOpen,
+  doctors,
   sendWhatsAppMessage,
   openEditAppointment,
   deleteAppointmentMutation,
 }: AppointmentOptionsDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { canManagePayments } = useUserRole();
+  const { canManagePayments, userRole } = useUserRole();
+  const canPrescribe = userRole === "super_admin" || userRole === "doctor";
+  const isDental = isDentalAppointment(selectedAppointment, doctors);
 
   const updateAppointmentStatus = async (appointmentId: string, status: AppointmentStatus) => {
     try {
@@ -92,28 +99,32 @@ export function AppointmentOptionsDialog({
                     <FileText className="h-4 w-4 ml-1" />
                     تسجيل علاج
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="justify-start"
-                    onClick={() => {
-                      setIsExecutePlanDialogOpen(true);
-                      setShowOptionsMenu(false);
-                    }}
-                  >
-                    <ClipboardCheck className="h-4 w-4 ml-1" />
-                    تنفيذ خطة علاج
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="justify-start"
-                    onClick={() => {
-                      setIsResumeDialogOpen(true);
-                      setShowOptionsMenu(false);
-                    }}
-                  >
-                    <CheckSquare className="h-4 w-4 ml-1" />
-                    استكمال علاج
-                  </Button>
+                  {isDental && (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="justify-start"
+                        onClick={() => {
+                          setIsExecutePlanDialogOpen(true);
+                          setShowOptionsMenu(false);
+                        }}
+                      >
+                        <ClipboardCheck className="h-4 w-4 ml-1" />
+                        تنفيذ خطة علاج
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="justify-start"
+                        onClick={() => {
+                          setIsResumeDialogOpen(true);
+                          setShowOptionsMenu(false);
+                        }}
+                      >
+                        <CheckSquare className="h-4 w-4 ml-1" />
+                        استكمال علاج
+                      </Button>
+                    </>
+                  )}
                   <Button
                     variant="outline"
                     className="justify-start"
@@ -135,6 +146,19 @@ export function AppointmentOptionsDialog({
                     إلغاء الموعد
                   </Button>
                 </>
+              )}
+              {canPrescribe && (
+                <Button
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => {
+                    setIsPrescriptionOpen(true);
+                    setShowOptionsMenu(false);
+                  }}
+                >
+                  <Pill className="h-4 w-4 ml-1" />
+                  وصفة طبية
+                </Button>
               )}
               {canManagePayments && (
                 <Button

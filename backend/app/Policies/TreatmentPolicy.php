@@ -8,10 +8,11 @@ use App\Support\DoctorBooks;
 use App\Support\Permissions;
 
 /**
- * Treatment catalog.
- *  - read: role matrix AND can_read_treatment_catalog(doctor_id)
- *  - write: super_admin, or an independent doctor on their OWN catalog
- *    ("Independent doctors manage own treatments" policy in Supabase).
+ * Treatment catalog, split by specialty only (2026-11-25).
+ *  - read: role matrix AND the treatment's specialty is visible to the user
+ *    (a doctor: their specialties; everyone else: all).
+ *  - write: role matrix (super_admin), or an independent doctor on a
+ *    treatment of one of their own specialties.
  * SubTreatment / SubTreatmentStep policies delegate here via owningTreatment().
  */
 class TreatmentPolicy
@@ -23,8 +24,10 @@ class TreatmentPolicy
 
     public function view(User $user, Treatment $treatment): bool
     {
+        $ids = DoctorBooks::for($user)->catalogSpecialtyIds();
+
         return Permissions::allows($user, 'treatments', 'view')
-            && DoctorBooks::for($user)->canReadCatalog($treatment->doctor_id);
+            && ($ids === null || in_array($treatment->specialty_id, $ids, true));
     }
 
     public function create(User $user): bool
@@ -53,14 +56,12 @@ class TreatmentPolicy
         if (! $user->is_active) {
             return false;
         }
+        if (Permissions::allows($user, 'treatments', $ability)) {
+            return true;
+        }
         $books = DoctorBooks::for($user);
 
-        if (Permissions::allows($user, 'treatments', $ability)) {
-            return $books->canSeeBooks($treatment->doctor_id);
-        }
-
         return $books->isIndependentDoctor()
-            && $treatment->doctor_id !== null
-            && $treatment->doctor_id === $books->currentDoctorId();
+            && in_array($treatment->specialty_id, $books->currentSpecialtyIds(), true);
     }
 }

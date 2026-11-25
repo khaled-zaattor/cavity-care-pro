@@ -62,7 +62,7 @@ trait BuildsClinic
         $this->kidsDoctor->specialties()->attach($kids->id, ['is_primary' => true]);
 
         $this->clinicTreatment = Treatment::create(['name' => 'حشوة', 'specialty_id' => $dental->id]);
-        $this->kidsTreatment = Treatment::create(['name' => 'معاينة وفحص', 'specialty_id' => $kids->id, 'doctor_id' => $this->kidsDoctor->id]);
+        $this->kidsTreatment = Treatment::create(['name' => 'معاينة وفحص', 'specialty_id' => $kids->id]);
         $clinicSub = SubTreatment::create(['treatment_id' => $this->clinicTreatment->id, 'name' => 'حشوة ضوئية', 'tooth_association' => 'single_tooth']);
         $kidsSub = SubTreatment::create(['treatment_id' => $this->kidsTreatment->id, 'name' => 'معاينة']);
 

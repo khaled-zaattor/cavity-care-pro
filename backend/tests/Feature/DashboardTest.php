@@ -47,8 +47,9 @@ class DashboardTest extends TestCase
         $doctor->refresh();
         $this->assertTrue($doctor->has_own_books);
         $this->assertSame('pediatrics', $doctor->primarySpecialty()->code);
-        $t = Treatment::where('doctor_id', $doctor->id)->sole();
-        $this->assertSame('معاينة وفحص', $t->name);
-        $this->assertSame(50000.0, $t->subTreatments()->sole()->estimated_cost_syp);
+        // shared per-specialty catalog: no doctor-owned treatments any more
+        $this->assertFalse(Treatment::where('doctor_id', $doctor->id)->exists());
+        $t = Treatment::where('name', 'معاينة وفحص')->where('specialty_id', $doctor->primarySpecialty()->id)->sole();
+        $this->assertSame(50000.0, $t->subTreatments()->where('name', 'معاينة وفحص')->sole()->estimated_cost_syp);
     }
 }

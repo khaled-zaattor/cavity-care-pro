@@ -1,4 +1,4 @@
-import type { SubTreatmentStep, Treatment } from "@/api/clinic";
+import type { Appointment, Doctor, SubTreatmentStep, Treatment } from "@/api/clinic";
 
 /** "1,250.5" -> 1250.5, "" -> null */
 export const toNumberOrNull = (value: string): number | null => {
@@ -7,6 +7,18 @@ export const toNumberOrNull = (value: string): number | null => {
   const n = parseFloat(clean);
   return isNaN(n) ? null : n;
 };
+
+/**
+ * Treatment plans and resuming multi-visit treatments are dental workflows.
+ * The appointment's specialty decides; without one, the doctor's specialties
+ * (unknown → dental, the clinic's default).
+ */
+export function isDentalAppointment(apt: Appointment | null | undefined, doctors: Doctor[] | undefined): boolean {
+  if (!apt) return true;
+  if (apt.specialty) return apt.specialty.is_dental;
+  const doctor = doctors?.find((d) => d.id === apt.doctor_id);
+  return !doctor || doctor.specialties.length === 0 || doctor.specialties.some((s) => s.is_dental);
+}
 
 export const sortSteps = (steps?: SubTreatmentStep[]) => [...(steps ?? [])].sort((a, b) => a.step_order - b.step_order);
 

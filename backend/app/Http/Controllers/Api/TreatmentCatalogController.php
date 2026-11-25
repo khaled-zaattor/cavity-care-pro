@@ -7,16 +7,15 @@ use App\Models\Specialty;
 use App\Models\SubTreatment;
 use App\Models\SubTreatmentStep;
 use App\Models\Treatment;
-use App\Support\DoctorBooks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
  * Treatments.tsx: treatment → sub-treatments → steps.
- * Visibility and write rights follow TreatmentPolicy (clinic catalog vs an
- * independent doctor's own catalog). Non-dental specialties never get tooth
- * options (plan §2.1).
+ * The catalog is split by specialty only (2026-11-25): treatments.doctor_id
+ * is no longer used (always NULL). Visibility and write rights follow
+ * TreatmentPolicy. Non-dental specialties never get tooth options (plan §2.1).
  */
 class TreatmentCatalogController extends Controller
 {
@@ -48,16 +47,9 @@ class TreatmentCatalogController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'specialty_id' => ['required', 'uuid', 'exists:specialties,id'],
-            'doctor_id' => ['nullable', 'uuid', $this->independentDoctorRule()],
         ]);
 
-        // An independent doctor always writes into their own catalog.
-        $books = DoctorBooks::for($request->user());
-        if (! $request->user()->isSuperAdmin() && $books->isIndependentDoctor()) {
-            $data['doctor_id'] = $books->currentDoctorId();
-        }
-
-        $treatment = new Treatment($data);
+        $treatment = new Treatment([...$data, 'doctor_id' => null]);
         $this->authorize('store', $treatment);
         $treatment->save();
 
@@ -71,22 +63,14 @@ class TreatmentCatalogController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'specialty_id' => ['sometimes', 'uuid', 'exists:specialties,id'],
-            // Move between the clinic catalog (null) and an independent doctor's catalog: super_admin only.
-            'doctor_id' => [Rule::prohibitedIf(! $request->user()->isSuperAdmin()), 'nullable', 'uuid', $this->independentDoctorRule()],
         ]);
 
-        if (array_key_exists('doctor_id', $data) && $data['doctor_id'] !== $treatment->doctor_id) {
-            $db = $treatment->getConnection();
-            $used = collect(['treatment_records', 'treatment_plans', 'unfinished_sub_treatments'])
-                ->contains(fn ($table) => $db->table($table)->where('treatment_id', $treatment->id)->exists());
-            if ($used) {
-                return response()->json(['message' => 'لا يمكن نقل علاج مستخدم في سجلات المرضى أو خطط العلاج إلى قائمة طبيب آخر'], 422);
-            }
-        } else {
-            unset($data['doctor_id']);
+        $treatment->fill($data);
+        // Moving to another specialty must stay within what this user may write.
+        if ($treatment->isDirty('specialty_id')) {
+            $this->authorize('update', $treatment);
         }
-
-        $treatment->update($data);
+        $treatment->save();
 
         if (! $treatment->specialty->is_dental) {
             $treatment->subTreatments()->update(['tooth_association' => 'not_related']);
@@ -181,12 +165,6 @@ class TreatmentCatalogController extends Controller
     }
 
     // ---- helpers ---------------------------------------------------------
-
-    /** A doctor-owned catalog only makes sense for a doctor with own books. */
-    private function independentDoctorRule(): \Illuminate\Validation\Rules\Exists
-    {
-        return Rule::exists('doctors', 'id')->where('has_own_books', true)->whereNull('deleted_at');
-    }
 
     private function validatedSub(Request $request, bool $creating): array
     {

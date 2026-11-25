@@ -28,6 +28,7 @@ import { ExportColumnsDialog } from "./appointments/ExportColumnsDialog";
 import { ColumnSelectDialog } from "./appointments/ColumnSelectDialog";
 import { BulkDeleteDialog } from "./appointments/BulkDeleteDialog";
 import { AddPaymentDialog } from "./appointments/AddPaymentDialog";
+import { PrescriptionDialog } from "@/components/PrescriptionDialog";
 
 export default function Appointments() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -37,6 +38,7 @@ export default function Appointments() {
   const [isExportColumnsDialogOpen, setIsExportColumnsDialogOpen] = useState(false);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [isAddPaymentDialogOpen, setIsAddPaymentDialogOpen] = useState(false);
+  const [isPrescriptionOpen, setIsPrescriptionOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
@@ -251,6 +253,8 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
             setIsRecordDialogOpen={setIsRecordDialogOpen}
             setIsExecutePlanDialogOpen={setIsExecutePlanDialogOpen}
             setIsResumeDialogOpen={setIsResumeDialogOpen}
+            setIsPrescriptionOpen={setIsPrescriptionOpen}
+            doctors={doctors}
             sendWhatsAppMessage={sendWhatsAppMessage}
             openEditAppointment={openEditAppointment}
             deleteAppointmentMutation={deleteAppointmentMutation}
@@ -295,6 +299,8 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
         setIsExecutePlanDialogOpen={setIsExecutePlanDialogOpen}
         setIsResumeDialogOpen={setIsResumeDialogOpen}
         setIsAddPaymentDialogOpen={setIsAddPaymentDialogOpen}
+        setIsPrescriptionOpen={setIsPrescriptionOpen}
+        doctors={doctors}
         sendWhatsAppMessage={sendWhatsAppMessage}
         openEditAppointment={openEditAppointment}
         deleteAppointmentMutation={deleteAppointmentMutation}
@@ -329,7 +335,15 @@ ${appointment.notes ? `📝 ملاحظات: ${appointment.notes}` : ''}
         selectedAppointment={selectedAppointment}
       />
 
-
+      {selectedAppointment?.patient && (
+        <PrescriptionDialog
+          open={isPrescriptionOpen}
+          onOpenChange={setIsPrescriptionOpen}
+          patient={{ id: selectedAppointment.patient.id, full_name: selectedAppointment.patient.full_name }}
+          appointmentId={selectedAppointment.id}
+          defaultDoctorId={selectedAppointment.doctor_id}
+        />
+      )}
     </div>
   );
 }

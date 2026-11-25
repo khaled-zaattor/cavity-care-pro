@@ -12,6 +12,10 @@ export function useUserRole() {
 
   const userRole = (user?.role ?? null) as AppRole | null;
   const hasOwnBooks = !!user?.has_own_books;
+  const specialties = user?.specialties ?? [];
+  // a doctor whose specialties are all non-dental (e.g. طب نسائي): no teeth, no dental plans
+  const isNonDentalDoctor = userRole === "doctor" && specialties.length > 0 && specialties.every((s) => !s.is_dental);
+  const isDentalOnlyDoctor = userRole === "doctor" && specialties.length > 0 && specialties.every((s) => s.is_dental);
 
   return {
     userRole,
@@ -21,5 +25,8 @@ export function useUserRole() {
     hasOwnBooks,
     isIndependentDoctor: userRole === "doctor" && hasOwnBooks,
     isSuperAdmin: userRole === "super_admin",
+    specialties,
+    isNonDentalDoctor,
+    isDentalOnlyDoctor,
   };
 }

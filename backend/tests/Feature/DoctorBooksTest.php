@@ -67,12 +67,14 @@ class DoctorBooksTest extends TestCase
 
     public function test_treatment_catalog_visibility(): void
     {
-        // clinic staff: clinic catalog only
-        $this->assertSame($this->ids($this->clinicTreatment), $this->visibleIds(Treatment::class, $this->assistant));
-        // receptionist: everything (read-only, for display)
-        $this->assertSame($this->ids($this->clinicTreatment, $this->kidsTreatment), $this->visibleIds(Treatment::class, $this->receptionist));
-        // independent doctor: own catalog only (not the clinic catalog)
+        // catalog is split by specialty only: a doctor sees their specialties
+        $this->assertSame($this->ids($this->clinicTreatment), $this->visibleIds(Treatment::class, $this->clinicDoctorUser));
         $this->assertSame($this->ids($this->kidsTreatment), $this->visibleIds(Treatment::class, $this->kidsDoctorUser));
+        // admin, reception and assistants see every specialty
+        $both = $this->ids($this->clinicTreatment, $this->kidsTreatment);
+        foreach ([$this->admin, $this->receptionist, $this->assistant] as $user) {
+            $this->assertSame($both, $this->visibleIds(Treatment::class, $user), $user->role);
+        }
     }
 
     public function test_single_row_policies_match_the_scopes(): void
@@ -97,20 +99,21 @@ class DoctorBooksTest extends TestCase
 
     public function test_catalog_writes(): void
     {
-        $ownNew = new Treatment(['name' => 'x', 'doctor_id' => $this->kidsDoctor->id]);
-        $clinicNew = new Treatment(['name' => 'y', 'doctor_id' => null]);
+        $kidsNew = new Treatment(['name' => 'x', 'specialty_id' => $this->kidsTreatment->specialty_id]);
+        $dentalNew = new Treatment(['name' => 'y', 'specialty_id' => $this->clinicTreatment->specialty_id]);
 
-        // independent doctor manages own catalog only
+        // independent doctor manages the treatments of their own specialty
         $this->assertTrue($this->kidsDoctorUser->can('create', Treatment::class));
-        $this->assertTrue($this->kidsDoctorUser->can('store', $ownNew));
-        $this->assertFalse($this->kidsDoctorUser->can('store', $clinicNew));
+        $this->assertTrue($this->kidsDoctorUser->can('store', $kidsNew));
+        $this->assertTrue($this->kidsDoctorUser->can('update', $this->kidsTreatment));
+        $this->assertFalse($this->kidsDoctorUser->can('store', $dentalNew));
         $this->assertFalse($this->kidsDoctorUser->can('update', $this->clinicTreatment));
 
         // clinic staff cannot edit the catalog; super_admin can edit everything
         $this->assertFalse($this->assistant->can('create', Treatment::class));
         $this->assertFalse($this->clinicDoctorUser->can('update', $this->clinicTreatment));
         $this->assertTrue($this->admin->can('update', $this->kidsTreatment));
-        $this->assertTrue($this->admin->can('store', $clinicNew));
+        $this->assertTrue($this->admin->can('store', $dentalNew));
     }
 
     public function test_patients_are_shared_and_only_admin_deletes_them(): void

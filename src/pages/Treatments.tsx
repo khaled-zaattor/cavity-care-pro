@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";import { Plus, Edit, Trash2, ChevronDown, ChevronRight, FileDown, Upload, ChevronsUpDown, Settings2, FolderUp, FolderDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { catalogApi, doctorsApi, specialtiesApi, apiErrorMessage, type Treatment, type SubTreatmentStep, type ToothAssociation } from "@/api/clinic";
+import { catalogApi, specialtiesApi, apiErrorMessage, type Treatment, type SubTreatmentStep, type ToothAssociation } from "@/api/clinic";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -30,39 +30,24 @@ export default function Treatments() {
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [editingTreatmentId, setEditingTreatmentId] = useState<string | null>(null);
 
-  // Which catalog is shown: the clinic catalog (doctor_id NULL) or an independent doctor's own catalog.
-  // Independent doctors always see/manage only their own catalog; super_admin can switch.
-  const { isIndependentDoctor, isSuperAdmin, doctorId } = useUserRole();
-  const [catalogOwner, setCatalogOwner] = useState<string>("clinic");
-  const ownerDoctorId: string | null = isIndependentDoctor
-    ? doctorId
-    : isSuperAdmin && catalogOwner !== "clinic"
-      ? catalogOwner
-      : null;
-
-  const { data: independentDoctors } = useQuery({
-    queryKey: ["independent-doctors"],
-    enabled: isSuperAdmin,
-    queryFn: async () => {
-      const doctors = await doctorsApi.list();
-      return doctors
-        .filter((d) => d.has_own_books)
-        .map((d) => ({ id: d.id, full_name: d.full_name, primary_specialty_id: d.primary_specialty_id }))
-        .sort((a, b) => a.full_name.localeCompare(b.full_name, "ar"));
-    },
-  });
+  // The catalog is split by specialty only: every doctor of a specialty sees its treatments
+  // (the server returns a doctor only their specialties). No clinic / per-doctor catalogs.
+  const { userRole, specialties: mySpecialties } = useUserRole();
+  const isDoctor = userRole === "doctor";
 
   // التخصصات
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
-  const { data: specialties } = useQuery({
+  const { data: allSpecialties } = useQuery({
     queryKey: ["specialties"],
     queryFn: () => specialtiesApi.list(),
   });
-  // In an independent doctor's catalog, new treatments default to that doctor's primary specialty
-  // (e.g. طب الأطفال); otherwise to dentistry.
-  const ownerPrimarySpecialty = independentDoctors?.find((d) => d.id === ownerDoctorId)?.primary_specialty_id;
+  // a doctor works with their own specialties only
+  const specialties =
+    isDoctor && mySpecialties.length > 0 ? allSpecialties?.filter((s) => mySpecialties.some((m) => m.id === s.id)) : allSpecialties;
+  // New treatments go to the filtered specialty, else the doctor's own, else dentistry.
   const defaultSpecialtyId =
-    (ownerPrimarySpecialty && specialties?.some((s) => s.id === ownerPrimarySpecialty) ? ownerPrimarySpecialty : null) ??
+    (specialtyFilter !== "all" ? specialtyFilter : null) ??
+    (isDoctor && mySpecialties.length > 0 && specialties?.some((s) => s.id === mySpecialties[0].id) ? mySpecialties[0].id : null) ??
     (specialties?.find((s) => s.is_dental) ?? specialties?.[0])?.id ??
     "";
 
@@ -186,7 +171,7 @@ export default function Treatments() {
         let lastError = "";
         for (const t of validTreatments) {
           try {
-            await catalogApi.createTreatment({ ...t, specialty_id: defaultSpecialtyId, doctor_id: ownerDoctorId });
+            await catalogApi.createTreatment({ ...t, specialty_id: defaultSpecialtyId });
             inserted++;
           } catch (err) {
             failed++;
@@ -224,15 +209,11 @@ export default function Treatments() {
     reader.readAsArrayBuffer(file);
   };
 
-  // catalog: "clinic" or an independent doctor's id (only the super_admin can choose it)
   const [newTreatment, setNewTreatment] = useState({
     name: "",
     description: "",
     specialty_id: "",
-    catalog: "clinic",
   });
-  const showCatalogPicker = isSuperAdmin && (independentDoctors?.length ?? 0) > 0;
-  const catalogDoctorId = (catalog: string) => (catalog === "clinic" ? null : catalog);
 
   const [newSubTreatment, setNewSubTreatment] = useState({
     name: "",
@@ -256,11 +237,10 @@ export default function Treatments() {
     queryFn: () => catalogApi.list(),
   });
 
-  // super_admin يرى كل الكتالوجات من الخادم: نعرض الكتالوج المختار فقط (null = علاجات العيادة).
-  // الطبيب المستقل يحصل على كتالوجه تلقائياً من الخادم.
-  const treatments: Treatment[] | undefined = allTreatments
-    ?.filter((t) => !isSuperAdmin || (t.doctor_id ?? null) === ownerDoctorId)
-    .filter((t) => specialtyFilter === "all" || t.specialty_id === specialtyFilter);
+  // العلاجات مقسّمة حسب التخصص فقط
+  const treatments: Treatment[] | undefined = allTreatments?.filter(
+    (t) => specialtyFilter === "all" || t.specialty_id === specialtyFilter,
+  );
 
   const showError = (error: unknown) =>
     toast({ title: "خطأ", description: apiErrorMessage(error), variant: "destructive" });
@@ -269,7 +249,7 @@ export default function Treatments() {
   const parentTreatment = allTreatments?.find((t) => t.id === selectedTreatmentId);
   const parentIsDental = parentTreatment?.specialty?.is_dental !== false;
 
-  const emptyTreatment = () => ({ name: "", description: "", specialty_id: defaultSpecialtyId, catalog: ownerDoctorId ?? "clinic" });
+  const emptyTreatment = () => ({ name: "", description: "", specialty_id: defaultSpecialtyId });
 
   const createTreatmentMutation = useMutation({
     mutationFn: async (treatment: typeof newTreatment) => {
@@ -277,7 +257,6 @@ export default function Treatments() {
         name: treatment.name,
         description: treatment.description || null,
         specialty_id: treatment.specialty_id,
-        doctor_id: isSuperAdmin ? catalogDoctorId(treatment.catalog) : ownerDoctorId,
       });
     },
     onSuccess: () => {
@@ -295,7 +274,6 @@ export default function Treatments() {
         name: treatment.name,
         description: treatment.description || null,
         specialty_id: treatment.specialty_id,
-        ...(isSuperAdmin ? { doctor_id: catalogDoctorId(treatment.catalog) } : {}),
       });
     },
     onSuccess: () => {
@@ -503,24 +481,9 @@ export default function Treatments() {
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <CardTitle>
-              {isIndependentDoctor ? "علاجاتي" : "إدارة العلاجات"}
+              {isDoctor && mySpecialties.length > 0 ? `علاجات ${mySpecialties.map((s) => s.name_ar).join("، ")}` : "إدارة العلاجات"}
             </CardTitle>
             <div className="flex flex-wrap gap-2">
-              {isSuperAdmin && (independentDoctors?.length ?? 0) > 0 && (
-                <Select value={catalogOwner} onValueChange={setCatalogOwner}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="clinic">علاجات العيادة</SelectItem>
-                    {independentDoctors?.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        علاجات د. {d.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
               <Dialog open={isTreatmentDialogOpen} onOpenChange={(open) => {
                 setIsTreatmentDialogOpen(open);
                 if (!open) {
@@ -551,38 +514,6 @@ export default function Treatments() {
                         required
                       />
                     </div>
-                    {showCatalogPicker && (
-                      <div>
-                        <Label>قائمة العلاجات</Label>
-                        <Select
-                          value={newTreatment.catalog}
-                          onValueChange={(value) => {
-                            const primary = independentDoctors?.find((d) => d.id === value)?.primary_specialty_id;
-                            setNewTreatment({
-                              ...newTreatment,
-                              catalog: value,
-                              // a new treatment follows the chosen doctor's specialty (e.g. نسائية)
-                              ...(!editingTreatmentId && primary ? { specialty_id: primary } : {}),
-                            });
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="clinic">علاجات العيادة</SelectItem>
-                            {independentDoctors?.map((d) => (
-                              <SelectItem key={d.id} value={d.id}>
-                                علاجات د. {d.full_name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          الطبيب ذو الحسابات المستقلة يرى العلاجات المضافة إلى قائمته فقط.
-                        </p>
-                      </div>
-                    )}
                     <div>
                       <Label>التخصص</Label>
                       <Select
@@ -600,6 +531,9 @@ export default function Treatments() {
                           ))}
                         </SelectContent>
                       </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        يظهر العلاج لكل طبيب من هذا التخصص.
+                      </p>
                     </div>
                     <div>
                       <Label htmlFor="description">الوصف</Label>
@@ -731,7 +665,7 @@ export default function Treatments() {
                         size="sm"
                         onClick={() => {
                           setEditingTreatmentId(treatment.id);
-                          setNewTreatment({ name: treatment.name, description: treatment.description || "", specialty_id: treatment.specialty_id, catalog: treatment.doctor_id ?? "clinic" });
+                          setNewTreatment({ name: treatment.name, description: treatment.description || "", specialty_id: treatment.specialty_id });
                           setIsTreatmentDialogOpen(true);
                         }}
                         title="تعديل العلاج"

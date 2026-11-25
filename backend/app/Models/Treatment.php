@@ -31,9 +31,11 @@ class Treatment extends Model
         return $this->hasMany(SubTreatment::class);
     }
 
-    /** Catalog read visibility (Supabase can_read_treatment_catalog). */
+    /** Catalog read visibility: by specialty only (see DoctorBooks::catalogSpecialtyIds). */
     public function scopeVisibleTo(Builder $query, User $user): Builder
     {
-        return DoctorBooks::for($user)->scopeCatalog($query, 'treatments.doctor_id');
+        $ids = DoctorBooks::for($user)->catalogSpecialtyIds();
+
+        return $ids === null ? $query : $query->whereIn('treatments.specialty_id', $ids);
     }
 }
