@@ -1,6 +1,6 @@
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,6 +66,7 @@ export function RecordTreatmentDialog({
   const selectedAppointmentDoctor = doctors?.find((d) => d.id === selectedAppointment?.doctor_id);
   const catalogDoctorId = selectedAppointmentDoctor?.has_own_books ? selectedAppointmentDoctor.id : null;
   const treatments = allTreatments?.filter((t) => (t.doctor_id ?? null) === catalogDoctorId);
+  const noTreatments = !!allTreatments && (treatments?.length ?? 0) === 0;
   const selectedTreatment = treatments?.find((t) => t.id === treatmentRecord.treatment_id);
   const subTreatments = selectedTreatment?.sub_treatments ?? [];
   const selectedSubTreatment = subTreatments.find((st) => st.id === treatmentRecord.sub_treatment_id);
@@ -143,6 +144,11 @@ export function RecordTreatmentDialog({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>تسجيل علاج</DialogTitle>
+          <DialogDescription className={catalogDoctorId ? undefined : "sr-only"}>
+            {catalogDoctorId
+              ? `العلاجات المعروضة من قائمة ${selectedAppointmentDoctor?.full_name} الخاصة (طبيب بحسابات مستقلة).`
+              : "اختر العلاج والعلاج الفرعي وسجّل التكلفة والدفعة لهذا الموعد."}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleRecordTreatment} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -151,9 +157,10 @@ export function RecordTreatmentDialog({
               <Select
                 value={treatmentRecord.treatment_id}
                 onValueChange={(value) => setTreatmentRecord({ ...treatmentRecord, treatment_id: value, sub_treatment_id: "" })}
+                disabled={noTreatments}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="اختر علاج" />
+                  <SelectValue placeholder={allTreatments ? (noTreatments ? "لا توجد علاجات" : "اختر علاج") : "جاري التحميل..."} />
                 </SelectTrigger>
                 <SelectContent>
                   {treatments?.map((treatment) => (
@@ -163,6 +170,13 @@ export function RecordTreatmentDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {noTreatments && (
+                <p className="text-xs text-destructive mt-1">
+                  {catalogDoctorId
+                    ? `${selectedAppointmentDoctor?.full_name} طبيب بحسابات مستقلة وقائمة علاجاته فارغة. أضف علاجاته من صفحة العلاجات (اختر الطبيب أعلى الصفحة)، أو ألغِ خيار «حسابات مستقلة» من صفحة الأطباء إن كان مفعّلاً بالخطأ.`
+                    : "لا توجد علاجات في قائمة العيادة. أضفها من صفحة العلاجات."}
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="sub_treatment_id">العلاج الفرعي</Label>
