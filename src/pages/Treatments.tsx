@@ -224,11 +224,15 @@ export default function Treatments() {
     reader.readAsArrayBuffer(file);
   };
 
+  // catalog: "clinic" or an independent doctor's id (only the super_admin can choose it)
   const [newTreatment, setNewTreatment] = useState({
     name: "",
     description: "",
     specialty_id: "",
+    catalog: "clinic",
   });
+  const showCatalogPicker = isSuperAdmin && (independentDoctors?.length ?? 0) > 0;
+  const catalogDoctorId = (catalog: string) => (catalog === "clinic" ? null : catalog);
 
   const [newSubTreatment, setNewSubTreatment] = useState({
     name: "",
@@ -265,7 +269,7 @@ export default function Treatments() {
   const parentTreatment = allTreatments?.find((t) => t.id === selectedTreatmentId);
   const parentIsDental = parentTreatment?.specialty?.is_dental !== false;
 
-  const emptyTreatment = () => ({ name: "", description: "", specialty_id: defaultSpecialtyId });
+  const emptyTreatment = () => ({ name: "", description: "", specialty_id: defaultSpecialtyId, catalog: ownerDoctorId ?? "clinic" });
 
   const createTreatmentMutation = useMutation({
     mutationFn: async (treatment: typeof newTreatment) => {
@@ -273,7 +277,7 @@ export default function Treatments() {
         name: treatment.name,
         description: treatment.description || null,
         specialty_id: treatment.specialty_id,
-        doctor_id: ownerDoctorId,
+        doctor_id: isSuperAdmin ? catalogDoctorId(treatment.catalog) : ownerDoctorId,
       });
     },
     onSuccess: () => {
@@ -291,6 +295,7 @@ export default function Treatments() {
         name: treatment.name,
         description: treatment.description || null,
         specialty_id: treatment.specialty_id,
+        ...(isSuperAdmin ? { doctor_id: catalogDoctorId(treatment.catalog) } : {}),
       });
     },
     onSuccess: () => {
@@ -546,6 +551,38 @@ export default function Treatments() {
                         required
                       />
                     </div>
+                    {showCatalogPicker && (
+                      <div>
+                        <Label>قائمة العلاجات</Label>
+                        <Select
+                          value={newTreatment.catalog}
+                          onValueChange={(value) => {
+                            const primary = independentDoctors?.find((d) => d.id === value)?.primary_specialty_id;
+                            setNewTreatment({
+                              ...newTreatment,
+                              catalog: value,
+                              // a new treatment follows the chosen doctor's specialty (e.g. نسائية)
+                              ...(!editingTreatmentId && primary ? { specialty_id: primary } : {}),
+                            });
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="clinic">علاجات العيادة</SelectItem>
+                            {independentDoctors?.map((d) => (
+                              <SelectItem key={d.id} value={d.id}>
+                                علاجات د. {d.full_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          الطبيب ذو الحسابات المستقلة يرى العلاجات المضافة إلى قائمته فقط.
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <Label>التخصص</Label>
                       <Select
@@ -694,7 +731,7 @@ export default function Treatments() {
                         size="sm"
                         onClick={() => {
                           setEditingTreatmentId(treatment.id);
-                          setNewTreatment({ name: treatment.name, description: treatment.description || "", specialty_id: treatment.specialty_id });
+                          setNewTreatment({ name: treatment.name, description: treatment.description || "", specialty_id: treatment.specialty_id, catalog: treatment.doctor_id ?? "clinic" });
                           setIsTreatmentDialogOpen(true);
                         }}
                         title="تعديل العلاج"

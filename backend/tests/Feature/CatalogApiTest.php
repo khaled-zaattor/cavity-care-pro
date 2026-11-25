@@ -81,6 +81,32 @@ class CatalogApiTest extends TestCase
         $this->actingAs($this->assistant)->getJson('/treatments')->assertJsonMissing(['id' => $treatmentId]);
     }
 
+    /** A treatment added to the clinic catalog by mistake can be moved to the doctor's own catalog. */
+    public function test_admin_moves_a_treatment_into_an_independent_doctors_catalog(): void
+    {
+        $kids = Specialty::where('code', 'pediatrics')->first();
+        $id = $this->actingAs($this->admin)->postJson('/treatments', ['name' => 'متابعة', 'specialty_id' => $kids->id])
+            ->assertCreated()->assertJsonPath('data.doctor_id', null)->json('data.id');
+        $this->actingAs($this->kidsDoctorUser)->getJson('/treatments')->assertJsonMissing(['id' => $id]);
+
+        // only the super_admin may move it, and only to a doctor with own books
+        $this->actingAs($this->kidsDoctorUser)->patchJson("/treatments/$id", ['doctor_id' => $this->kidsDoctor->id])->assertForbidden();
+        $this->actingAs($this->admin)->patchJson("/treatments/$id", ['doctor_id' => $this->clinicDoctor->id])->assertStatus(422);
+
+        $this->actingAs($this->admin)->patchJson("/treatments/$id", ['doctor_id' => $this->kidsDoctor->id])
+            ->assertOk()->assertJsonPath('data.doctor_id', $this->kidsDoctor->id);
+        $this->actingAs($this->kidsDoctorUser)->getJson('/treatments')->assertJsonFragment(['id' => $id]);
+
+        // editing without doctor_id keeps the catalog
+        $this->actingAs($this->admin)->patchJson("/treatments/$id", ['name' => 'متابعة 2'])->assertJsonPath('data.doctor_id', $this->kidsDoctor->id);
+    }
+
+    public function test_treatment_used_in_records_cannot_change_catalog(): void
+    {
+        $this->actingAs($this->admin)->patchJson("/treatments/{$this->clinicTreatment->id}", ['doctor_id' => $this->kidsDoctor->id])
+            ->assertStatus(422);
+    }
+
     public function test_catalog_listing_follows_books_rules(): void
     {
         $this->actingAs($this->assistant)->getJson('/treatments')->assertOk()

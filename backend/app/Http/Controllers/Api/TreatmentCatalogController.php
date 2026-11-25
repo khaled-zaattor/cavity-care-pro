@@ -48,7 +48,7 @@ class TreatmentCatalogController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'specialty_id' => ['required', 'uuid', 'exists:specialties,id'],
-            'doctor_id' => ['nullable', 'uuid', 'exists:doctors,id'],
+            'doctor_id' => ['nullable', 'uuid', $this->independentDoctorRule()],
         ]);
 
         // An independent doctor always writes into their own catalog.
@@ -71,7 +71,21 @@ class TreatmentCatalogController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'specialty_id' => ['sometimes', 'uuid', 'exists:specialties,id'],
+            // Move between the clinic catalog (null) and an independent doctor's catalog: super_admin only.
+            'doctor_id' => [Rule::prohibitedIf(! $request->user()->isSuperAdmin()), 'nullable', 'uuid', $this->independentDoctorRule()],
         ]);
+
+        if (array_key_exists('doctor_id', $data) && $data['doctor_id'] !== $treatment->doctor_id) {
+            $db = $treatment->getConnection();
+            $used = collect(['treatment_records', 'treatment_plans', 'unfinished_sub_treatments'])
+                ->contains(fn ($table) => $db->table($table)->where('treatment_id', $treatment->id)->exists());
+            if ($used) {
+                return response()->json(['message' => 'لا يمكن نقل علاج مستخدم في سجلات المرضى أو خطط العلاج إلى قائمة طبيب آخر'], 422);
+            }
+        } else {
+            unset($data['doctor_id']);
+        }
+
         $treatment->update($data);
 
         if (! $treatment->specialty->is_dental) {
@@ -167,6 +181,12 @@ class TreatmentCatalogController extends Controller
     }
 
     // ---- helpers ---------------------------------------------------------
+
+    /** A doctor-owned catalog only makes sense for a doctor with own books. */
+    private function independentDoctorRule(): \Illuminate\Validation\Rules\Exists
+    {
+        return Rule::exists('doctors', 'id')->where('has_own_books', true)->whereNull('deleted_at');
+    }
 
     private function validatedSub(Request $request, bool $creating): array
     {

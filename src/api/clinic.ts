@@ -295,7 +295,7 @@ export const catalogApi = {
   list: (params: { specialty_id?: string; doctor_id?: string } = {}) => d(api.get<Data<Treatment[]>>("/treatments", params)),
   createTreatment: (body: { name: string; description?: string | null; specialty_id: string; doctor_id?: string | null }) =>
     d(api.post<Data<Treatment>>("/treatments", body)),
-  updateTreatment: (id: string, body: { name?: string; description?: string | null; specialty_id?: string }) =>
+  updateTreatment: (id: string, body: { name?: string; description?: string | null; specialty_id?: string; doctor_id?: string | null }) =>
     d(api.patch<Data<Treatment>>(`/treatments/${id}`, body)),
   removeTreatment: (id: string) => api.delete(`/treatments/${id}`),
   createSub: (body: Partial<SubTreatment> & { treatment_id: string; name: string }) => d(api.post<Data<SubTreatment>>("/sub-treatments", body)),
